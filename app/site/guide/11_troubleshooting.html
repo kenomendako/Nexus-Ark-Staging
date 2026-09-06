@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- Generated from docs/user_guide/. Do not edit directly. -->
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>トラブルシューティング | Nexus Ark ガイド</title>
+  <meta name="description" content="Nexus Ark ユーザーガイド: トラブルシューティング">
+  <link rel="icon" href="../assets/favicon-180.png" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/favicon-180.png">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="../index.html#top" aria-label="Nexus Ark トップ">
+      <img class="brand-mark" src="../assets/favicon-180.png" alt="" width="36" height="36">
+      <span>Nexus Ark</span>
+    </a>
+    <nav class="nav-links" aria-label="主要ナビゲーション">
+      <a href="../index.html#experience">体験</a>
+      <a href="../index.html#features">特徴</a>
+      <a href="index.html">ガイド</a>
+      <a href="../index.html#start">はじめかた</a>
+      <a href="../index.html#faq">FAQ</a>
+    </nav>
+  </header>
+  <main class="guide-layout">
+    <aside class="guide-sidebar" aria-label="ガイド目次">
+      <a class="guide-home" href="index.html">ガイド目次</a>
+      <ol>
+  <li><a href="00_getting_started.html">はじめに</a></li>
+  <li><a href="01_initial_settings.html">最初の設定ガイド</a></li>
+  <li><a href="02_ui_overview.html">画面構成と基本操作</a></li>
+  <li><a href="03_chat_and_logs.html">チャットとログ管理</a></li>
+  <li><a href="04_memory_notes_knowledge.html">記憶・ノート・知識</a></li>
+  <li><a href="05_autonomy_delegation_atelier.html">自律行動・ウォッチリスト・委任</a></li>
+  <li><a href="06_closet_items.html">クローゼット・アイテム</a></li>
+  <li><a href="07_external_connections_lite.html">外部接続とNexus Ark Lite</a></li>
+  <li><a href="07a_lite_cloud_setup.html">PCを止めてLiteを使うための準備ガイド</a></li>
+  <li><a href="08_models_api_costs.html">AIモデル・APIキー・コスト管理</a></li>
+  <li><a href="09_notifications_time_calendar_weather.html">通知・時間管理・カレンダー・天気</a></li>
+  <li><a href="10_outing_import_export.html">お出かけ・インポート・エクスポート</a></li>
+  <li><a href="11_troubleshooting.html">トラブルシューティング</a></li>
+</ol>
+    </aside>
+    <article class="guide-article">
+      <h1>トラブルシューティング</h1>
+<p>よくあるつまずきと確認場所をまとめます。 エラーが出た時は、まず現在のルーム、使っているプロバイダ、APIキー、対象タブを確認してください。 内部ログは中央「デバッグコンソール」で確認できます。</p>
+<h2>APIキーを登録したのに会話できない</h2>
+<p>左サイドバー「⚙️ 設定」→「共通」→「🔑 APIキー / Webhook管理」→「Gemini APIキー」で、キー名と値が保存されているか確認します。 次に「⚡ AIモデルプロバイダ設定（デフォルト）」で、使用するGemini APIキーが選ばれているか確認します。</p>
+<p>ルームごとの個別設定を使っている場合は、「⚙️ 設定」→「個別」→「⚡ AIモデルプロバイダ設定（このルーム）」も確認します。 「共通設定に従う」ではなく個別プロバイダを選んでいる場合、そのルーム専用のモデルやキーが使われます。</p>
+<h2>APIコストが気になる</h2>
+<p>次を確認してください。</p>
+<ul>
+<li>「⚙️ 設定」→「共通」→「📊 API使用量の概算」。</li>
+<li>「⚙️ 設定」→「個別」→「📡 送信コンテキスト設定」→「APIへの履歴送信（短期記憶の長さ）」。</li>
+<li>中央「自律行動」→「自律行動（このルーム）」→「✨ 自律行動設定（このルーム）」。</li>
+<li>中央「自律行動」→「自律行動（このルーム）」→「🔬 リサーチ・テーマ（継続調査・このルーム）」。</li>
+</ul>
+<p>送信履歴を短くし、自律行動の間隔を長くし、自動リサーチ上限を下げると、呼び出し回数を抑えやすくなります。</p>
+<h2>記憶を思い出してくれない</h2>
+<p>左サイドバー「⚙️ 設定」→「個別」→「📡 送信コンテキスト設定」→「記憶の想起（長期記憶）を有効化」がONか確認します。</p>
+<p>ナレッジに保存した思い出や参考情報も自動参照してほしい場合は、同じ場所の「ナレッジも自動想起に含める（関連時のみ）」もONか確認します。親の「記憶の想起」がOFFの場合、ナレッジの自動検索も行われません。 中央「知識」→「📚 知識ファイル」で知識ファイルの索引が作成済みか確認します。 中央「記憶・ノート」→「記憶」→「🛠️ 記憶のメンテナンス (手動実行)」から、記憶索引や現行ログ索引を更新できます。</p>
+<p>Embeddingモデルを変えた後は、古い索引をそのまま使うと検索精度が落ちることがあります。 その場合は「🗑️ 索引を初期化して再構築」を検討してください。</p>
+<h2>スマホから開けない</h2>
+<p>中央「外部接続」→「Lite・お出かけ」→「📱 Nexus Ark Lite」→ 「A・すぐ使える『PCをつけたまま使う』」→「本体接続の設定」で、接続が有効か確認します。 「スマホ用URL・接続情報を更新」を押し、「Nexus Ark Lite 接続情報」に表示されるURLを使います。</p>
+<p>同じWi-Fiを使う場合は、<code>127.0.0.1</code>ではなく画面に自動表示された<code>192.168...</code>等のURLをスマホで開きます。 開けない場合はPCとスマホが同じWi-Fiか確認し、Windowsの確認画面でNexus ArkまたはPythonの 「プライベートネットワーク」通信だけを許可してください。公共ネットワークへは許可しないでください。 Tailscaleを使う場合は、PCとスマホの接続状態と、画面のTailscale HTTPS診断を確認してください。 マイクや通知が使えない場合は、HTTPSで開いているか、ブラウザの権限が許可されているか確認します。</p>
+<h2>Lite独立モードを開始できない</h2>
+<p>中央「外部接続」→「Lite・お出かけ」→「📱 Nexus Ark Lite」→「☁️ Lite独立モード」へ進み、 まず「現在の状態に更新」を 押します。本体、Worker、端末、待機snapshotのどこで止まっているかと次の操作が表示されます。この診断は 読み取り専用です。詳細な導入・更新状態が必要な場合は、続いて 「Lite用クラウドを接続・確認（すでに準備済みの方）」→ 「詳細・保守（問題がある時だけ）」で「Lite用クラウドを詳しく診断」を押します。</p>
+<p>初めてLite用クラウドを準備する方は、「PCを止めても使う」を押し、開いた初回設定の案内に沿って進めてください。 詳しい利用条件は <strong>「PCを止めても使う」の詳しい説明</strong> で確認できます。</p>
+<p>本体接続を利用し、Nexus Arkの更新後にもう一度確認してください。</p>
+<p>更新がなければ、公式配布パッケージを同じ場所へ入れ直します。Node.jsやnpmを別途導入する必要はありません。</p>
+<p>Dashboardに表示された<code>workers.dev</code>の公開名だけを入力します。完全なURLは本体が組み立てるため、アカウント名からURLを推測しないでください。</p>
+<p>完了済みのものを読み直して次の操作を表示し、確認できない場合は安全停止します。</p>
+<ul>
+<li><strong>新規準備ボタンが安全停止している</strong>: 実環境での開放確認前です。Cloudflare上の変更は始まっていません。</li>
+<li><strong>Liteの準備ツールに「修復が必要」と表示される</strong>: 「修復用の更新を確認」を押し、署名済み更新がある時だけ一括修復します。</li>
+<li><strong>公開先の初回登録が必要と表示される</strong>: 公式Cloudflare Dashboardで<code>workers.dev</code>を一度登録し、</li>
+<li><strong>準備中に画面やPCが停止した</strong>: 作成ボタンや公開ボタンを繰り返し押さず、Nexus Arkを再起動して状態を確認します。</li>
+</ul>
+<ul>
+<li><code>prerequisite_missing</code>: Liteの準備ツールと同梱relay資源を確認します。runtimeだけを手作業で置き換えません。</li>
+<li><code>migration_required</code>: 画面の安全更新計画を作り、表示されたmigrationをWorker公開より先に適用します。</li>
+<li><code>worker_update_required</code>／<code>client_update_required</code>: WorkerとNexus Ark本体の組合せを更新します。</li>
+<li><code>active_session_blocked</code>: 進行中または帰宅途中の旅行を先に完了します。暗黙に削除しません。</li>
+<li><code>secret_action_required</code>: <code>OWNER_AUTH_TOKEN</code>、<code>BUNDLE_SIGNING_KEY</code>、<code>STANDBY_ENCRYPTION_KEY</code>を確認します。</li>
+<li><code>maintenance_overdue</code>: 保持期限previewを確認してから手動掃除を実行します。</li>
+<li><code>unreachable</code>／<code>unauthorized</code>／<code>unknown_schema</code>: migrationやdeployを試さず、URL、認証、schemaを確認します。</li>
+</ul>
+<p>Lite側で「お出かけ前データなし」と表示される場合は、本体接続中に「今の状態をお出かけ前のデータとして準備」を押します。 「再ペアリングが必要」と表示される場合、snapshotがないという意味ではありません。端末認証の期限切れまたは 失効によりsnapshotの有無を確認できない状態です。本体で新しい短期ペアリングコードを発行し、通常ブラウザではなく 実際に持ち出すインストール済みPWA内で再ペアリングしてください。</p>
+<p>短期コード発行時のQRを読んでも通常ブラウザが開く端末があります。その画面の「接続状態」で「通常ブラウザ」と 表示される場合はペアリングせず、持ち出すPWAを開いてWorker URLと短期コードを手入力してください。 「QRの短期コードは期限切れ」と表示された場合は、5分の有効期限を過ぎています。本体で新しいコードを発行します。 QRを開いただけではペアリングは実行されないため、PWA内で内容を確認して「ペアリング」を押してください。 本体へ接続できないだけでは自動開始しません。「独立モード」を押し、分岐可能性の説明を確認してください。</p>
+<h2>通知が来ない</h2>
+<p>左サイドバー「⚙️ 設定」→「共通」→「📢 通知サービス設定」で、アラーム用と通知用のサービスを確認します。 Discord WebhookやPushoverキーは「🔑 APIキー / Webhook管理」で保存します。</p>
+<p>中央「自律行動」→「自律行動（このルーム）」→「✨ 自律行動設定（このルーム）」→「🌙 通知禁止時間帯（このルーム）」に入っている時間帯は、通常通知が抑制されます。</p>
+<h2>メニューが見つからない</h2>
+<p>まず、左サイドバー、中央タブ、右サイドバーのどこを探しているか確認します。 左サイドバーは「設定」系、中央タブは会話・記憶・自律行動・外部接続、右サイドバーはプロフィールと情景です。</p>
+<p>このガイドで案内しているラベルは、2026-07-10時点の実UIに合わせています。 アップデート後に場所が変わった場合は、中央「デバッグコンソール」ではなく、該当するタブ名やアコーディオン名を優先して探してください。</p>
+      <nav class="guide-page-nav" aria-label="前後のページ">
+        <a href="10_outing_import_export.html">前へ</a>
+        <a href="index.html">目次へ</a>
+        <span></span>
+      </nav>
+    </article>
+  </main>
+</body>
+</html>

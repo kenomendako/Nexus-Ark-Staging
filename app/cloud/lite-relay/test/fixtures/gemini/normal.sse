@@ -1,0 +1,3 @@
+data: {"modelVersion":"models/model-phase0","candidates":[{"content":{"parts":[{"text":"PHASE0_"}]}}]}
+
+data: {"modelVersion":"models/model-phase0","candidates":[{"content":{"parts":[{"text":"OK"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3,"cachedContentTokenCount":8}}

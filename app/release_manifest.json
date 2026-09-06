@@ -1,0 +1,2719 @@
+{
+  "components": {
+    "app": {
+      "version": "0.5.0.44"
+    },
+    "python_env": {
+      "declared_min_python_version": "3.10",
+      "lock_sha256": "b9d7610f5fe03cb158b2b8044a79647a5f42f70df81108ab349103d143a0b7a9",
+      "present": true,
+      "pyproject_sha256": "67521586b13355f6442bc25d04789cc58ba06c14eb58272d150d68465251e133",
+      "requires_python": ">=3.11, <3.14"
+    },
+    "runtime": {
+      "artifact_digest": "855ff79ff19c3113eb0ef6a1619db08a51484781d7d063b036df4a3cbca244f1",
+      "id": "lite-wrangler",
+      "manifest_digest": "eea365c650b613083dcc626e591296f05036596dbc9d6c199c2047f08b20aa0b",
+      "node_version": "22.23.2",
+      "present": true,
+      "target_name": "LiteRuntime-win-x64-node-22.23.2+wrangler-4.118.0.tar.gz",
+      "version": "node-22.23.2_wrangler-4.118.0",
+      "wrangler_version": "4.118.0"
+    }
+  },
+  "entries": [
+    {
+      "kind": "owned",
+      "path": "NEXUS_ARK_SPECIFICATION.md",
+      "sha256": "bd61cac79286667888a313d59a8a44c279ce35994b6ef459af13c4c2c8f6c0c4",
+      "size": 41409
+    },
+    {
+      "kind": "owned",
+      "path": "README.md",
+      "sha256": "136a78d300e66c4884b8e61a711da548a3719e76a86928ca4fd0e3cfc4598c09",
+      "size": 7553
+    },
+    {
+      "kind": "owned",
+      "path": "RELEASE_NOTES.md",
+      "sha256": "7cdf8d470327a29c1fefbff76fe2856ba2293dc2d5265d8c6b8e75f1ba624fd7",
+      "size": 37922
+    },
+    {
+      "kind": "owned",
+      "path": "SetupLocalLLM.bat",
+      "sha256": "de3af09ae33979432d7409abb7628b9005071191b95c467760c195a3e1488bc4",
+      "size": 1860
+    },
+    {
+      "kind": "owned",
+      "path": "action_logger.py",
+      "sha256": "cc4ca3e16714d01e387c7f30f8c3d3581f7917d5b019be611d533ab3d3ddfd1a",
+      "size": 13716
+    },
+    {
+      "kind": "owned",
+      "path": "action_plan_manager.py",
+      "sha256": "bfdbbff94bf3be2a8a19540f6827d5a27e25ac96cfbd0e8a3a7ca0d14a797785",
+      "size": 3219
+    },
+    {
+      "kind": "owned",
+      "path": "agent/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "kind": "owned",
+      "path": "agent/graph.py",
+      "sha256": "89dafcc122c8b3094c8a9b746b6fde475d94079e330eb286bf4bc57974a7e0d4",
+      "size": 305537
+    },
+    {
+      "kind": "owned",
+      "path": "agent/prompts.py",
+      "sha256": "30fd7c93e9f17e304a64f58abdc47ee15da3391e083e5ad790648f3a898427d0",
+      "size": 31375
+    },
+    {
+      "kind": "owned",
+      "path": "agent/scenery_manager.py",
+      "sha256": "fb62b8eba95eea56b6f53e58f24750014b24881bd8ce7852411ec08a04f35c1a",
+      "size": 14149
+    },
+    {
+      "kind": "owned",
+      "path": "agent/sub_agent_node.py",
+      "sha256": "462081ba1e97037858e6bd30e1153f7d3ff7201c20ea2d04e30fbd24faa47bdd",
+      "size": 5482
+    },
+    {
+      "kind": "owned",
+      "path": "agent/temporary_location_manager.py",
+      "sha256": "3fd15203820f65d8cede67ebf33310c5c6c5a461713d950c209ee262f3acfc8e",
+      "size": 11092
+    },
+    {
+      "kind": "owned",
+      "path": "agent/tool_message_compression.py",
+      "sha256": "1063a50911262c29495bcf04c2fa6e39b5566ffdb1168d2ef29fda4d694251e9",
+      "size": 3824
+    },
+    {
+      "kind": "owned",
+      "path": "agent/tool_registry.py",
+      "sha256": "37bd1e15c1e9d7bc9cc3d99cdd1d7b0d2fb449a43251972f4c892f8c5aebe297",
+      "size": 58832
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/__init__.py",
+      "sha256": "4d9e0157e0d440e45246c597bdaa8ac66c8a02efbf571b6c8548d883fd7dfdb0",
+      "size": 985
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/manager.py",
+      "sha256": "ff92c9944835663b988fd394c00cdc88f5feeb610c961d00bf80ece8f8ea730a",
+      "size": 106001
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/memory_watchdog.py",
+      "sha256": "2423725911e6616c2093c46e3e2f2837d6a482a3af27d823b551d492244214c5",
+      "size": 5841
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/native_backend.py",
+      "sha256": "9326c48f64f1dfc8cf27d8c482d0d88d8ef4b276b8948680a8185b045f0dffeb",
+      "size": 30619
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/native_tools.py",
+      "sha256": "4107c9090f3216a67b6005ccd1e57db6acc5dc542cf8508ff23cf898d502b0c1",
+      "size": 17319
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/native_worker.py",
+      "sha256": "b9ed2e83c4800c6bec5e64d2be9f538a0670371e133236bcb28ec04710727577",
+      "size": 5550
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/native_worker_processes.py",
+      "sha256": "f1e983bc7c85534c967809201f91eb986d19262ef4d51e5223e3b66b584cc80b",
+      "size": 12060
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/native_worker_supervisor.py",
+      "sha256": "d9c726d65013c4f1e4939520aaea57a8b4c999490a4f7742701826cd92f82a7f",
+      "size": 15225
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/resource_limits.py",
+      "sha256": "de4c202e2f497e035996e6d6c0cf7bf88d6479c3b8b2d820406dc3c7dcbbbf9c",
+      "size": 1582
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/roles.py",
+      "sha256": "c8d74409a7e3564381d08c0f41e116b6bc034dcea680e32bc58560190027c254",
+      "size": 20897
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/skill_pack.py",
+      "sha256": "445c1a9b8ed0595947ac5a184438ffafe962550f0ee055dde416c8dad786ea5f",
+      "size": 30688
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/types.py",
+      "sha256": "68126cd3b08ee803501ad5c6e88731919c835e8a71425f3ea049078d8866d6c2",
+      "size": 2387
+    },
+    {
+      "kind": "owned",
+      "path": "agent_delegation/worker_contract.py",
+      "sha256": "e8112e42f2e85843d071c20d56299ce514da5e687fda414a5f4e914db1f2657e",
+      "size": 11004
+    },
+    {
+      "kind": "owned",
+      "path": "agent_roles/coder.md",
+      "sha256": "7b096f9700c0a13ca8e1846f6da4c1814226ef7575bd9e4905a4eb9e5ef0961c",
+      "size": 842
+    },
+    {
+      "kind": "owned",
+      "path": "agent_roles/critic.md",
+      "sha256": "80c72c41fe7aef848f1cdccd8b9a212f60fb4c2b97c3a36220da432bf084bac5",
+      "size": 1051
+    },
+    {
+      "kind": "owned",
+      "path": "agent_roles/designer.md",
+      "sha256": "b3e0a45b590dee19c256ee63ff5f7e873afd3e916c5fcadddf7761f952abe83e",
+      "size": 901
+    },
+    {
+      "kind": "owned",
+      "path": "agent_roles/editor.md",
+      "sha256": "4cc0a6385060b8fb104e3ceee032a4f47487542510b96f27649f3666b64636d3",
+      "size": 738
+    },
+    {
+      "kind": "owned",
+      "path": "agent_roles/researcher.md",
+      "sha256": "12b796a0dfbdd4be75d76a1e38c95f90894a977dcf3cb27a06a07c80d41a7e7e",
+      "size": 791
+    },
+    {
+      "kind": "owned",
+      "path": "agent_skills/atelier-api-buttons.md",
+      "sha256": "29151af6d5ff4e1d8c18cf560505508d8df28a74cd2ed590844ce068bad9eb37",
+      "size": 3875
+    },
+    {
+      "kind": "owned",
+      "path": "agent_skills/atelier-app-building.md",
+      "sha256": "659348df6cfbe2833ad4bf2d59f335aaaa21375e6d4f43666f0d17e41f6180b9",
+      "size": 2457
+    },
+    {
+      "kind": "owned",
+      "path": "agent_skills/atelier-persona-creative-handoff.md",
+      "sha256": "7c67c2aaca7c00adebc4aa4c518caabce0738787104c3c5d5aa0624ebe277c8e",
+      "size": 2060
+    },
+    {
+      "kind": "owned",
+      "path": "agent_skills/atelier-rich-visuals.md",
+      "sha256": "3136d46e04f5ecb515312c2c6bba18af78dcf23550b09dd75a691709df167d75",
+      "size": 3510
+    },
+    {
+      "kind": "owned",
+      "path": "agent_skills/codebase-task.md",
+      "sha256": "a0374f703933e77f4ace87fe2231f200054ed6e73006f4573ee160cf2032c2a7",
+      "size": 1744
+    },
+    {
+      "kind": "owned",
+      "path": "agent_skills/deep-research.md",
+      "sha256": "e782af930ee68bd2d3b98a1a8e3e9e6acb0062de0f38ff8fb0eff088ef139b1f",
+      "size": 1784
+    },
+    {
+      "kind": "owned",
+      "path": "agent_skills/frontend-design.md",
+      "sha256": "db3f608d530c426ba5121fa6026cb3268628e8925869121ad7b86c38e382a4ee",
+      "size": 2543
+    },
+    {
+      "kind": "owned",
+      "path": "alarm_manager.py",
+      "sha256": "4c9ff5877e4bdd9d8aafb5f8b0df4066c40cdfd3e828c487266e2fa76e178944",
+      "size": 130120
+    },
+    {
+      "kind": "owned",
+      "path": "api/__init__.py",
+      "sha256": "60518ccc480bd4a2885b3328a87ff79145fee078e3a74590de6b82d9e5416643",
+      "size": 43
+    },
+    {
+      "kind": "owned",
+      "path": "api/atelier_tokens.py",
+      "sha256": "ab74a41ba8db203fc44924ec70f4b041f00ba766026e003e9c1c7316fa49dc60",
+      "size": 4942
+    },
+    {
+      "kind": "owned",
+      "path": "api/capabilities.py",
+      "sha256": "0e2e59326dc005cb00980d0e5a7b0895a699b1d0b06f6bc178c4aeff85c3a82f",
+      "size": 7439
+    },
+    {
+      "kind": "owned",
+      "path": "api/schemas.py",
+      "sha256": "6c3d4e2d5ddce2a22137386d0c1e0e4bdb305b7718215ec0c339c734ebead5f2",
+      "size": 11456
+    },
+    {
+      "kind": "owned",
+      "path": "api/server.py",
+      "sha256": "0f8855f80a8427b4c12153232a6080a230b62237c817a818a5859cefe325d6ea",
+      "size": 34088
+    },
+    {
+      "kind": "owned",
+      "path": "api/service.py",
+      "sha256": "8673f9abbf6f13fc94fa1b81a23f1cf39e78eba4fe773dc66afa94404f1bc82b",
+      "size": 94330
+    },
+    {
+      "kind": "owned",
+      "path": "arousal_calculator.py",
+      "sha256": "aed357c481349e58a9c5b0e27db8178dd0ee5dc7e025d8988da680b8dfdc73c2",
+      "size": 3525
+    },
+    {
+      "kind": "owned",
+      "path": "assets/app_icon.png",
+      "sha256": "5ecf756f51ef31e8085e0be0db079e4e88fb95dae415f347c41e42069bc2fa0e",
+      "size": 1250993
+    },
+    {
+      "kind": "owned",
+      "path": "assets/atelier_libs/three-0.185.1.module.min.js",
+      "sha256": "86bcee248b64f44bcfc23c331ae74619061957d59cab040171dcb6fb5900beb6",
+      "size": 365552
+    },
+    {
+      "kind": "owned",
+      "path": "assets/atelier_libs/three-LICENSE.txt",
+      "sha256": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc",
+      "size": 1081
+    },
+    {
+      "kind": "owned",
+      "path": "assets/atelier_libs/three.core.min.js",
+      "sha256": "05b2609338c76cd65daf74f3ac515bc9a5045e1b3b33edc07d8c9bd55250fa90",
+      "size": 385386
+    },
+    {
+      "kind": "owned",
+      "path": "assets/atelier_libs/vue-3.5.39.global.prod.js",
+      "sha256": "349cb8e0ede3449b4962458daa03418518af50b4a9959a552cce35a8bec92805",
+      "size": 164901
+    },
+    {
+      "kind": "owned",
+      "path": "assets/atelier_libs/vue-LICENSE.txt",
+      "sha256": "1bb85cc9b13b81ef41c81c51866172fc345e0503c86726a6755b796590b70175",
+      "size": 1091
+    },
+    {
+      "kind": "owned",
+      "path": "assets/config_template.json",
+      "sha256": "1f7e608cce3713b15143394e967dfcd64bc4fe954a210f1372e0253bfc7e04aa",
+      "size": 2442
+    },
+    {
+      "kind": "owned",
+      "path": "assets/default_shared_procedures/autonomy_reflect_and_close.md",
+      "sha256": "b68aba6b2eb4bda5a991f925bf65a7a5178ea0094dc5d33ffd7a9b7911ee4bc6",
+      "size": 1664
+    },
+    {
+      "kind": "owned",
+      "path": "assets/default_shared_procedures/sample_safe_context_update.md",
+      "sha256": "0c98ee9eafcdf20f1ac99b377af98fd7f2a95c86874699fe3bd3b476f25b5b3f",
+      "size": 1715
+    },
+    {
+      "kind": "owned",
+      "path": "assets/default_shared_procedures/skill_creation_duplicate_check.md",
+      "sha256": "f37afd64c67e6613264669fe5e609f6314ce65eeaafdcf125b5449e0e531974d",
+      "size": 1819
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/PINOKIO_TEST_GUIDE.md",
+      "sha256": "1c3aa8a3f3b856893c60b80bb8ca22054b1dda95f872e3ed675c550037858eb8",
+      "size": 4947
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/api_gateway_external_integration.md",
+      "sha256": "a5515aeda546fd543d6ac4df53be226c1f9bb4feded1760bdb05c41b2e3910a5",
+      "size": 8333
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/api_gateway_token_relay_server.py",
+      "sha256": "04150384dc964c35b85d00f27fe5b771d95688754cae11e58ddf360101a082d2",
+      "size": 4955
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/extension_tools_guide.md",
+      "sha256": "0fd5b175aab9a613dabe1691c04620259b5314bb348761124543035c32a6add6",
+      "size": 5193
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/gemini_explicit_cache_guide.md",
+      "sha256": "48bb48690712c1d48d8b7c3d062df80a3e26229ab6e845ac9cb29c5dfb7cce14",
+      "size": 6626
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/google_calendar_setup_guide.md",
+      "sha256": "6f36bb7eea2d9871c9844ecf34df6b385aae4aaed0a78ca60ec5a0d36c172e52",
+      "size": 8909
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/local_llm_setup_guide.md",
+      "sha256": "f51d9c59c78e790b17921ca2252c8b382a8d24ffed0561af329b405e37c4c8e1",
+      "size": 5340
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/nexus_ark_lite_pwa_connection.md",
+      "sha256": "85c4443c205609edb302d30422351dff58332e1cf424703b750ff6011812daba",
+      "size": 5658
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/roblox_api_gateway_event_client.lua",
+      "sha256": "3baca32362f3cbc5a6e366f0667e9c77d99ccb0bc825abb2c6a255b8d5f0e9cc",
+      "size": 1783
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/roblox_api_gateway_relay_event_client.lua",
+      "sha256": "5e4d60ed7eed7d15630a63c820da0125cac7908019d2bb0f181c81d1c8deda46",
+      "size": 1867
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/roblox_quickstart_guide.md",
+      "sha256": "2b9b0c6b11a7836849bea82c095568f22f8c1075ab5c813b5ae6cdc427e863dd",
+      "size": 5809
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/roblox_setup_guide.md",
+      "sha256": "1e66732767820de5cdcbadaf274a57c5bb3571a305f5fea39a7d394205baf7ae",
+      "size": 14302
+    },
+    {
+      "kind": "owned",
+      "path": "assets/guides/roblox_webhook_guide.md",
+      "sha256": "269d5e7b6f22d0da666ae9903aef1e5c725e4d5a6b575f133e887dc7edc549a4",
+      "size": 12044
+    },
+    {
+      "kind": "owned",
+      "path": "assets/images/chessboard-sprite.svg",
+      "sha256": "755cf40d6f612030f1e27f294f7adbfabf5ff25481050e5c51bac9a3e3cd0a63",
+      "size": 24343
+    },
+    {
+      "kind": "owned",
+      "path": "assets/images/main-ui.png",
+      "sha256": "acb67d50a0e11d8f8d97ebc08e2863ee6c4c6df2858e9788ebd1f3fa274a9afd",
+      "size": 1910329
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/SystemPrompt.txt",
+      "sha256": "defb0843e901e54005a686bf0ea9f3a73b54b499ef0abb9635ff1ecc158ba904",
+      "size": 8198
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/core_memory.txt",
+      "sha256": "8b9a6e5cc0a93e172257c59845df5e72d06206e8ddd3818287217bfde9f9aa61",
+      "size": 2180
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/current_location.txt",
+      "sha256": "e22eacb5900b939f39b93a4929d796f3a9ff0db55bd14b2e0b7412fa0f080b3a",
+      "size": 27
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/00_getting_started.md",
+      "sha256": "48aba18ccc20049aac19f25a79776b01e0f8f2a3f98c9b9b2911edfe0d442ba2",
+      "size": 3519
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/01_initial_settings.md",
+      "sha256": "cd00e224d5223ee2a04ca2239783abb0f1e842aec88630640172d1a0297510c9",
+      "size": 6703
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/02_ui_overview.md",
+      "sha256": "8ce9e8db818c5ee4dbb60ab8f641a1696a49bcfa25fd1592d2a9f57731d2da0c",
+      "size": 5145
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/03_chat_and_logs.md",
+      "sha256": "0414024d8a166ddb9443c0ae985308ec33614211394514226812e3c7c2421161",
+      "size": 8480
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/04_memory_notes_knowledge.md",
+      "sha256": "c8de3481baba8d10548990928d801c2324d1d439d6cb3aec5c15e528dd986724",
+      "size": 7181
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/05_autonomy_delegation_atelier.md",
+      "sha256": "06667f27eef28d1356093848df30f7e126af836ae38c6efd8d60de3a890ddd32",
+      "size": 6690
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/06_closet_items.md",
+      "sha256": "d7ad6249774e51faaeaae20a2e28631acb27725d70bf7bea7ba45568dd0f7b0f",
+      "size": 3842
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/07_external_connections_lite.md",
+      "sha256": "7433d72f989d2b0a465b23b35e36a8a37213c586167276b69b1376cf9c51e452",
+      "size": 40034
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
+      "sha256": "277b82dd0db31294f4acb4e8e2c54c649a1bc22ec22b0c6d43b7d009542ee2d7",
+      "size": 16731
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/08_models_api_costs.md",
+      "sha256": "49b60d45d3a68593cd832586626e411b8e62ed7b6fe28855e66f6958e1f36429",
+      "size": 6743
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/09_notifications_time_calendar_weather.md",
+      "sha256": "dc61656ec73a82e6263ac27fec4a57b1ee0ba52e3620d7fc5db3a17af8c0954c",
+      "size": 4177
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/10_outing_import_export.md",
+      "sha256": "012244c7c577107d916f0018b2a88c8b9080b59e9077b9e7c69c497dd45f2f2c",
+      "size": 15560
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/11_troubleshooting.md",
+      "sha256": "dc7eefabb68dea586cfd4216d445fc14e2b87cf2668e421af7da26760c932352",
+      "size": 9243
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/knowledge/guide_answering_rules.md",
+      "sha256": "0047db99d46d4ad38d0bad0e89c98c59167ad1344efce5227b11eb6515f2406a",
+      "size": 831
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/log.txt",
+      "sha256": "9a8b131e69248be5cc4982ed3b93ae90f9ca34aa3acc2ad5396467af976d72f8",
+      "size": 159
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/memory/memory_main.txt",
+      "sha256": "c47a06f8d379c4933ca47e41edbf7924cc648d7ea629538cbcf58f00643c8815",
+      "size": 2127
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/profile.png",
+      "sha256": "fc143f1b9c1c1d5e226d6def665c3ae10c0078df12070773f5fc00f62fff5c92",
+      "size": 410428
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.faiss",
+      "sha256": "ddaffc46cf787462ee7c8594e21b414e6221eeac2821c5ac6112b5a1e3f93955",
+      "size": 3084333
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.pkl",
+      "sha256": "05d393df39f4ae14fdaef02cf6f1e2f11a8b752642f7100400ff40562f400573",
+      "size": 167092
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/model_info.json",
+      "sha256": "ea60a407a6a2c7a7a25ba68200969ca54eb964ec5a854811a125379b037f0791",
+      "size": 175
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/room_config.json",
+      "sha256": "6f6c4b22ae9d4e7b80a39585766fd45e0348ab2ad1717abcaa135114252753e3",
+      "size": 2122
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/Theatre_des_etoiles_spring_afternoon.png",
+      "sha256": "6b613ed4aee19453701564b4952b39840f27a82c57386ffd1a04921286df7f16",
+      "size": 97545
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/エントランスホール_spring_afternoon.png",
+      "sha256": "f7c5dad0735c7ce320d1e3982be71a1251c2c9535b50faded175589d46981ae5",
+      "size": 99734
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/オルフェウス号_spring_afternoon.png",
+      "sha256": "0aa7a22fdbbfa9bcd8f14359646c41894d640a9542fe4d119abd1896f79e1aee",
+      "size": 73224
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/コクリコの午後_spring_afternoon.png",
+      "sha256": "5d426c9a56ca995155ac2fcea038db1c1b0079009efca91cc0b98235962a2988",
+      "size": 81451
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/星詠みの円形劇場（アストロテアトルム）_spring_afternoon.png",
+      "sha256": "a22a0d57518c5e56989daa81c6ac6d44122343df2dff9c44bf21f4dcec8eb734",
+      "size": 98436
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/月影のグラス_spring_afternoon.png",
+      "sha256": "f1d5592ce74398cf60725a2796effa09debf508ac32c855653ec089f68fe624e",
+      "size": 68372
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/水の鏡_spring_afternoon.png",
+      "sha256": "1bd5b405ef28614c85d06ba4c12a38c700474f8ee9c1b0520dfac8a39e689079",
+      "size": 89898
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/images/言の葉の揺りかご（The Cradle of Whispering Leaves）_spring_afternoon.png",
+      "sha256": "0d8479f204768142850f82cebe6e763ae851fd1fcf077f0f1ac97b64f3e9d680",
+      "size": 117226
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/Olivie/spaces/world_settings.txt",
+      "sha256": "5f4255cf5b1a8009bbc19eb3aefc624d26b0f160393d96772fd9497652c3a0f7",
+      "size": 27989
+    },
+    {
+      "kind": "owned",
+      "path": "assets/sample_persona/expressions.json",
+      "sha256": "04a551610e6ee5909d1290b483e92fe8afb53cdbb92c1ee7e7f846385a03a7ef",
+      "size": 1145
+    },
+    {
+      "kind": "owned",
+      "path": "assets/styles/nexus_ark.css",
+      "sha256": "4917904984c05303796191cd89ff74cade0388c4374aecb7b3992aa5365d4dfc",
+      "size": 31483
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Default_dark.png",
+      "sha256": "c761e69ebce179155fd89da509734d2be349db75a466b3b3faa3df5f10b62eac",
+      "size": 241155
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Default_light.png",
+      "sha256": "742fff1352a21c08ad9d624e40a7996ba15af607cb2b0df7bfdb003ffb3c1392",
+      "size": 238301
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Glass_dark.png",
+      "sha256": "d73853040a03dcab0a6c93d9b33dd9744299fe8329c4379a2fceed64ddf79f8e",
+      "size": 262971
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Glass_light.png",
+      "sha256": "c0af02d424ca8c5d8da49e564a80d8f8efeff2d4a558368b5b68e766c0644192",
+      "size": 284755
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Monochrome_dark.png",
+      "sha256": "937a7cbcd4ab990b98dc2412922d6404a2ecc53198d477cc80aa7b348ccff2f9",
+      "size": 190745
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Monochrome_light.png",
+      "sha256": "888f9f3e304dc2d78e0330d9e8a974c80be659a7927a33a0a7a912cdf8e322cf",
+      "size": 198395
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Soft_dark.png",
+      "sha256": "624af3132461c8db66f8f2a0c247463ac9193347f6638ff5668f2e47316bc34c",
+      "size": 250134
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/Soft_light.png",
+      "sha256": "d72c538fd195934388fd5c22092ef2b9de989a2d80251c77bc37b0d3645c46e9",
+      "size": 241278
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/lilac_theme_dark.png",
+      "sha256": "119b12b0bdd30dc7edb65c047aa1f1cd9278d36da833c4bdb2fbc70860ffff70",
+      "size": 265938
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/lilac_theme_light.png",
+      "sha256": "8d71c08b23b4b9e17b9c645e062ca6f2ed1466cb98be55ca9d9adc28541722eb",
+      "size": 269089
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/nexus_ark_theme_dark.png",
+      "sha256": "acd6ca453815677b851314ea2c25c763879d038d88d93c4973e15526ec8dd70a",
+      "size": 199952
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/nexus_ark_theme_light.png",
+      "sha256": "48c82b8e338ab77b5f545009250a5f97e620346c27755fd3626e2c43cf6acd80",
+      "size": 184895
+    },
+    {
+      "kind": "owned",
+      "path": "assets/theme_previews/no_preview.png",
+      "sha256": "376697aaaf4c6d22b179e89ce4f581c13c3bc1a7bb79d6da3129d2781192a718",
+      "size": 25326
+    },
+    {
+      "kind": "owned",
+      "path": "atelier_app_grants.py",
+      "sha256": "09ed07518e1381a0b1f213b979cb56c2fbd9c0e41036ecd155636c46516f32b9",
+      "size": 9508
+    },
+    {
+      "kind": "owned",
+      "path": "atelier_preview.py",
+      "sha256": "367da533c6cb0120ed7f9af4303133dac67f52185c340add60ce9d6ed1f66c47",
+      "size": 5046
+    },
+    {
+      "kind": "owned",
+      "path": "atelier_serve/__init__.py",
+      "sha256": "a4f81a6a6b7f8160b6f5aebdee316b43fbb0a82241c367bcd311f97ec6f2e34e",
+      "size": 43
+    },
+    {
+      "kind": "owned",
+      "path": "atelier_serve/server.py",
+      "sha256": "db6f87e4d6f49bffd5bf3856694a23eb9aa857f1e92080af3d0cab2ad361e8fa",
+      "size": 30555
+    },
+    {
+      "kind": "owned",
+      "path": "attention_rhythm_manager.py",
+      "sha256": "1d44c1cf22e8e409db670733ac2d2bb52a9114fc5f3c635f87cb8f65f644ae44",
+      "size": 10625
+    },
+    {
+      "kind": "owned",
+      "path": "audio_manager.py",
+      "sha256": "825884d421fecfd3ce534f55be712563af8a9e643ca1a13975aedf409d6b97df",
+      "size": 48488
+    },
+    {
+      "kind": "owned",
+      "path": "autonomy_context_manager.py",
+      "sha256": "7029b9b21d7c724620d87d1d6fffcb4c3e5ef2a9001f08f3c1a3a45b713948d1",
+      "size": 18229
+    },
+    {
+      "kind": "owned",
+      "path": "autonomy_scribe.py",
+      "sha256": "4029f9af4fc10df6c8de2ea4067a0beee944e50556bac49ff3e333d017ef7cdf",
+      "size": 5476
+    },
+    {
+      "kind": "owned",
+      "path": "batch_importer.py",
+      "sha256": "c53aad76a79a34553de4da40a6d6b2b235a0caaa61200cfd8c84bd9889ada2db",
+      "size": 5183
+    },
+    {
+      "kind": "owned",
+      "path": "capability_policy_manager.py",
+      "sha256": "998c122ef3a7c4abba571ea54f9ef719b65d61fe50fffb9342f05ff9a8e6f778",
+      "size": 9755
+    },
+    {
+      "kind": "seed",
+      "path": "characters/_shared/memory/procedures/autonomy_reflect_and_close.md",
+      "sha256": "b68aba6b2eb4bda5a991f925bf65a7a5178ea0094dc5d33ffd7a9b7911ee4bc6",
+      "size": 1664
+    },
+    {
+      "kind": "seed",
+      "path": "characters/_shared/memory/procedures/sample_safe_context_update.md",
+      "sha256": "0c98ee9eafcdf20f1ac99b377af98fd7f2a95c86874699fe3bd3b476f25b5b3f",
+      "size": 1715
+    },
+    {
+      "kind": "seed",
+      "path": "characters/_shared/memory/procedures/skill_creation_duplicate_check.md",
+      "sha256": "f37afd64c67e6613264669fe5e609f6314ce65eeaafdcf125b5449e0e531974d",
+      "size": 1819
+    },
+    {
+      "kind": "owned",
+      "path": "chatgpt_importer.py",
+      "sha256": "2f586aed63fc9a34fc0f3a168d2574b3505f26fd47ebcb1ba117e31ed05fb067",
+      "size": 11458
+    },
+    {
+      "kind": "owned",
+      "path": "claude_importer.py",
+      "sha256": "5820365249f14ebcc38f45e4bab4cb59ed8982aa16898ef8e6968fc081d03e09",
+      "size": 7944
+    },
+    {
+      "kind": "owned",
+      "path": "claude_subscription_auth.py",
+      "sha256": "d78287eec73c2b17275c5c5555220ad916dfd985987e8af81f216de3c859d843",
+      "size": 2524
+    },
+    {
+      "kind": "owned",
+      "path": "claude_subscription_chat.py",
+      "sha256": "59508cb2b1c88edc4153a6e64821474b45ef464d1a582d9df5f577dc8ae80f6a",
+      "size": 28859
+    },
+    {
+      "kind": "owned",
+      "path": "closet_manager.py",
+      "sha256": "70a965186c5bc9bae7ce12631465cde972005e3d4b039ef52ea077e2d1076559",
+      "size": 43293
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/.dev.vars.example",
+      "sha256": "0e007991c0126d0d08df3b4db076995087618a12a0a214d9e256748195e67446",
+      "size": 497
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/README.md",
+      "sha256": "1f228c3b558932869e6999e26a1a5b29a6378870ac8a4c6119760619533b3773",
+      "size": 9134
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0001_phase0_core.sql",
+      "sha256": "27fb2e64dd92efefdf1dce1b5786065fce234d2991782c4addfa3c50542c9a58",
+      "size": 3021
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0002_phase1_auth_snapshot.sql",
+      "sha256": "d511ca9200087564b67681b2f1464f10261e6a3797e5d15547c587c75cca854d",
+      "size": 1951
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0003_phase1_terminal_diagnostics.sql",
+      "sha256": "ef3fcc0f957adc90f9780f7b5f79fb66f19efbc7798f228f7e06dee50d536281",
+      "size": 362
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0004_phase1_provider_http_diagnostics.sql",
+      "sha256": "c2f9a63bd86fcabd596b15df799eef36124da82ba32d15e76f7c6e26ba687d0d",
+      "size": 136
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0005_phase2_profiles_routes.sql",
+      "sha256": "0a95079b2bd5af18ee6fc4bac698ee1b6366dbd09f245569bbf72a543d928666",
+      "size": 3400
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0006_phase2_receipt_route_epoch.sql",
+      "sha256": "4a278aec3e06eb4bcd9f39b205098a7281dfe8789c76f55da390c46488006340",
+      "size": 78
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0007_phase3_pricing_budget_cache.sql",
+      "sha256": "210191034d58fb99d8d9111950de22b700fea52bfb7b2ad883ad8119013bb7da",
+      "size": 3461
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0008_phase4_multi_persona_return.sql",
+      "sha256": "7ae2bd9b2780c42c11589c0d9d6649359c094c0a2d95ffc1e258b322d8cc824e",
+      "size": 3229
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0009_phase5_operations_standby.sql",
+      "sha256": "4fa6dd03e7d205a6ac663ed3d50ce12bb20c902404e58c94a843ed94bfc99096",
+      "size": 2738
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/migrations/0010_return_high_water_guards.sql",
+      "sha256": "f2f4520bf4f638071aa41e962f83a46ba2915d9ed520286aa0c6330725227c01",
+      "size": 1181
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/package-lock.json",
+      "sha256": "b824d1967e8a66b631a09b9bec168b231e23537d8c9c6b7b6c173f5f8712c56e",
+      "size": 89444
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/package.json",
+      "sha256": "cd4d37462014ca61cb51e078ceff7fad27e7c735cf7729c44ec635bf01383710",
+      "size": 843
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/badge.png",
+      "sha256": "1a8ca65c877fbcd7ee1da7f68afdbc9b80f6d9c254ad3ebc173221ad0fa9fe43",
+      "size": 579
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/icon-maskable.png",
+      "sha256": "1a8ca65c877fbcd7ee1da7f68afdbc9b80f6d9c254ad3ebc173221ad0fa9fe43",
+      "size": 579
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/icon.png",
+      "sha256": "1a8ca65c877fbcd7ee1da7f68afdbc9b80f6d9c254ad3ebc173221ad0fa9fe43",
+      "size": 579
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/index.html",
+      "sha256": "df47fe9bf1f242ad869384cad79d0a49f9a4269527615dddba5e15528d6430a7",
+      "size": 30141
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/manifest.webmanifest",
+      "sha256": "538e1e7927689443cc1a5126bf051f03916193e26a6a8aaf1edcb76b90aaff05",
+      "size": 578
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/service-worker.js",
+      "sha256": "6042b2de1cf6065614317125efca10963fb2d90ee82a3fcdd6715d8e69bdef65",
+      "size": 2455
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/static/app.js",
+      "sha256": "09485bbe178823c4285cf522b6ad7596698e4a69a3f36a78c2253666c4609c65",
+      "size": 172853
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/static/lite-continuity-state.js",
+      "sha256": "b70c50abddd62942de4b3c60607ce72ac9d821dc2ad17e33f4374fadd0a680ae",
+      "size": 2052
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/static/pairing-handoff.js",
+      "sha256": "01ecb247c2e8626b5ddc511198c18df2bddabc310a319bb0bcc2101131c6b301",
+      "size": 1304
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/static/styles.css",
+      "sha256": "6477f99e3c71bc970d36ac2680c8c6bb8cec9e8138a0c950402892b089f965b0",
+      "size": 39707
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/public/static/travel-adapter.js",
+      "sha256": "7ed25402814880ead2658b41e9c726ae8e1b7984af3422035aaf647b5256b143",
+      "size": 12779
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/scripts/build-unified-lite.mjs",
+      "sha256": "0c44cfec561a3202f6ec202ae5e6c59d8b988632c325674c6646e6a3acd6a8ed",
+      "size": 2716
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/scripts/validate-sw-boundary.mjs",
+      "sha256": "eb60ca7d58f288486c0c7e546de24f6bad841d4bd4ec9a4134f58c88602a7fac",
+      "size": 7351
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/scripts/wrangler-secret-stdin-preload.cjs",
+      "sha256": "cd1bfe1f7b79be1e39c8749b4f85198fcc45fd6a6a16cd7f491118b418f9eaa1",
+      "size": 4310
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/adapters.ts",
+      "sha256": "f0f8aea56e67cba57a70f11674d2e74d1a3ae21d532a4b291e3d198f51388e90",
+      "size": 17650
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/admin.ts",
+      "sha256": "087942978a7ebae6bd93be4e6840b4b1b6c35fdbc99dbe7c55f0c7d4d048254c",
+      "size": 6141
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/api-catalog.ts",
+      "sha256": "d0e980b499778776b8b0544253321c6accae4f940787a1b41bb721a33bbde597",
+      "size": 8864
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/auth.ts",
+      "sha256": "c2c00de0eb185441e3a7ea99ff3e074d5179abd03c2a3e23277dfa3e44709061",
+      "size": 2961
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/budget.ts",
+      "sha256": "f8991b35dda3d99e152955090b5488c20a86208de1ce188985a61cb9adc5bf61",
+      "size": 11498
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/chat-coordinator.ts",
+      "sha256": "32d4a7778dff7dd822e2a11414152a66a39a682e8af1fc07bad18d941945e358",
+      "size": 1897
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/external-ai-export.ts",
+      "sha256": "215c1af7b163dfdc852018dd9ad2c3832a85efc836c9fed27d5a92422639c591",
+      "size": 6184
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/index.ts",
+      "sha256": "b5bfbf44fb27328c3368e15ec1de102bea8e421e14f5cf69a4082905bb5fc064",
+      "size": 25247
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/ledger-contract.ts",
+      "sha256": "7d1ade894bc4bc10ccfc8b4daccf3b81628e30b7b6858df646fcbd9c5ae6b880",
+      "size": 1625
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/lite-build-contract.ts",
+      "sha256": "af83f3df6ca15393418ae5f6b7c6c7ba91d2819a34e35d5c1627eeb056dfb00a",
+      "size": 1001
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/live-validation.ts",
+      "sha256": "37ca2f5b5438d5db455122b3dcbc469ffb804c6d29059e8a71aa2daaddba42a7",
+      "size": 13558
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/model-catalog.ts",
+      "sha256": "f44c6bae73f26abdc0b69d3575b6dab193852682e7d1340d586a808f748e57a7",
+      "size": 5972
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/phase1.ts",
+      "sha256": "1908d8a49f3ceec069dd26ce683af0731ff7930c9dc5016ee2d6e693b7600a81",
+      "size": 34318
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/phase2-routing.ts",
+      "sha256": "b4ad96762b74e69ffae8bf30106e2ce1f615d6178d8a0dc1baa1f7f4d7f840aa",
+      "size": 14571
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/phase4-return.ts",
+      "sha256": "49445b243a9d3ab5141536f2e22e3852d2b987f50fa90b28285b7cf86691ccae",
+      "size": 14743
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/pricing-catalog.ts",
+      "sha256": "57cbd26ce384f2040331f17cbdcef2bc0a51ef4b790c9ed5c96309635551fff7",
+      "size": 8340
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/provider-cache.ts",
+      "sha256": "1f17ef7aa514924b3b6f47158c44d0ba363ef47a6b0db4f120b11695ec50cf37",
+      "size": 8530
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/provider-requests.ts",
+      "sha256": "6ff0433a885d865dd64f292f5b5d70c66028de5160541f442778c4328e2b3fce",
+      "size": 5763
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/remote-validation.ts",
+      "sha256": "1fba6c02f8562dd2e54aaa1f54533deb5aacc5dbfb9bb3c1d2eb945f913d82b8",
+      "size": 7158
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/security.ts",
+      "sha256": "7ad6877100a0630f0d64641e19d08bc9d04a56fc8b4470f6ff70ad6a59986a93",
+      "size": 4090
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/sse.ts",
+      "sha256": "0efaa2915221eec447659182d5f4cc2578756d7be846c1e819b5b5b1ea88a7d3",
+      "size": 1047
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/standby.ts",
+      "sha256": "c31a5bc7da5b5f5224e9dafb04b2c47a9fd6666593401afe1bb3ae8124af5e13",
+      "size": 12257
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/storage.ts",
+      "sha256": "b6677a36ce26dc32c067d7fd323c7570e7a8e98098ec46fc19e44d6d71d64b11",
+      "size": 17791
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/travel-chat.ts",
+      "sha256": "4705e06928967faedb1b900d9f37cab4ff6bfa80978ccb51282b27d0068be311",
+      "size": 23229
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/types.ts",
+      "sha256": "240c5a6fd2e24483dc76755213b7229ad47a6ce0a847da597d54a5de7d5a5d65",
+      "size": 2980
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/src/worker-configuration.d.ts",
+      "sha256": "78b761e221287c507f21b2eda10191c7891f2b4d3f9b264e013b5af60b21c0df",
+      "size": 868
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test-node/lite-continuity-ui.test.mjs",
+      "sha256": "dddfec2b6e90f586cd3c248071bbd6daecb3efc33b07bba1931d4c03bffa688a",
+      "size": 5896
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test-node/pairing-handoff.test.mjs",
+      "sha256": "c4c4c33cfcf5050d67c6e2b777572cd2219c75ebd965da1b3bf179049a008760",
+      "size": 1596
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test-node/travel-adapter.test.mjs",
+      "sha256": "b292ce1f2860c7896b2bf8d625d24ba88d13bdf927f1c1c2130987abc40f3893",
+      "size": 12613
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/adapters.spec.ts",
+      "sha256": "a354c6598f332aac40e037f098e8133d65d9a6cbab0ac82700efe495076f0c97",
+      "size": 5103
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/apply-migrations.ts",
+      "sha256": "dbd4619ccc0c98d49c7509e61e21a264942b89ed75cf15f02f2529ce4609913e",
+      "size": 113
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/chat-coordinator.spec.ts",
+      "sha256": "891f71b78dd0edd66b0d08f75e194fc7d039444f0a7ee012f996b999c1084499",
+      "size": 3862
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/env.d.ts",
+      "sha256": "747b204bd3aa82f472dd223dfd40bef91962f1903ae1086603280b65ce866048",
+      "size": 124
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/anthropic/models.json",
+      "sha256": "48964a3c1e0d28175af505e124b3ea2c72ed01243e469ee8617af2bd419198bb",
+      "size": 85
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/anthropic/normal.sse",
+      "sha256": "e04dbfdb4f9cffafdd426675270803a6c8913d1d1cf0c28d8c8e127e6689c219",
+      "size": 708
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/gemini/models.json",
+      "sha256": "6068363ea698af21956d2b5828c4f49dd22a1b0533b81d1df8c2f9864cc7b6fd",
+      "size": 140
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/gemini/normal.sse",
+      "sha256": "744f14a45a77663b4b5f65dad50f540ec1f7fac7a5fe2b35320270aae0425847",
+      "size": 317
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/openai/models.json",
+      "sha256": "4223edaaa572f2e2d2a5114f1a3b8b6d52613b68ab70731586a0393e41b8f1c9",
+      "size": 73
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/openai/normal.sse",
+      "sha256": "f23bbd866bd23b4bef5243d4333a0d8e9d7554f125ae54db842529b7461d200c",
+      "size": 429
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/openrouter/fallback_violation.sse",
+      "sha256": "693483925265e10222c3395ab89bba80eb6e1a140f1e4672d10c3e0f3e5f1656",
+      "size": 464
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/openrouter/models.json",
+      "sha256": "1875cbaaa931b0eaa4f52bbead82cea0b9e10edeb396e936359d59f6cd1d35c5",
+      "size": 119
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/openrouter/normal.sse",
+      "sha256": "4599a89dad178e2c641216ceb7e7a152875a58440d910b8d986486e991e5613d",
+      "size": 490
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/xai/models.json",
+      "sha256": "033ab44617dd5c59bd694f3ec4cbb4bb4790e6c08c8f6665b4d0aae8fe878a05",
+      "size": 87
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/fixtures/xai/normal.sse",
+      "sha256": "8c469841afe38415bc020d04660d2b208048516af0660473205a9e1dc3fa17cd",
+      "size": 448
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/lite-build-contract.spec.ts",
+      "sha256": "0a9251d8cfabcea40a790b6193a36bfcb7ba9eaac4c42a233cde30789087547a",
+      "size": 913
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/live-validation.spec.ts",
+      "sha256": "2b25390467822086b14667a433108b3b17508b7a47a162a587774e3fc6621333",
+      "size": 4816
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/mock-provider.ts",
+      "sha256": "b80eb8ed903fe321a318240baec9b58e6433238e1dbd31144ab3f9799df6b19f",
+      "size": 1154
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/model-catalog.spec.ts",
+      "sha256": "f7a66c7de5698f5f18f211a8a12569aa83d5a7199a87d83ab87ac3c942f5c7f0",
+      "size": 7149
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/models-and-ledger.spec.ts",
+      "sha256": "2059f0984043aee1803ee37bbdbf1fbd4131c106c50a431f130ee3d3aabdea36",
+      "size": 1991
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/phase1.spec.ts",
+      "sha256": "386ce7dd5c5696b9e8c66c69cbaf4dd4dc0e40fbddbdc332d774bc622edde6dd",
+      "size": 12748
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/phase2-routing.spec.ts",
+      "sha256": "cd4981c37c90d9dad3c139d78fd31f811c3f829f0cc59b90eb99b961b6fdd1fe",
+      "size": 9596
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/phase3-budget-cache.spec.ts",
+      "sha256": "a8b6a660247125ab76b4ef3266dcb5f4c2002d01368e249fa833914de7e784ee",
+      "size": 11054
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/phase4-multi-persona.spec.ts",
+      "sha256": "e17588e11f4c5de4578fe7ba854730a3b088ca58f9fb6dec5bcb365a53a7b7df",
+      "size": 17037
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/phase5-standby-operations.spec.ts",
+      "sha256": "dd37dc29ea0a5bcb3f79f78134de5c2b6b6504a775e92b5f72b7ee556ccf3789",
+      "size": 12498
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/pricing-catalog.spec.ts",
+      "sha256": "30ba320afb014592e38494471900880da094f1d11eb5daa1d70360f12e795a0e",
+      "size": 4824
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/raw.d.ts",
+      "sha256": "fc9c563cdef274837bf28d3dfff02b13ce3d19c84830b4b6c088c32c33ddb13e",
+      "size": 78
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/security.spec.ts",
+      "sha256": "483f3d02ca2d17c114e99d5320d341eca4bcb3136e4bcd230b0c75b962046ceb",
+      "size": 2978
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/storage.spec.ts",
+      "sha256": "fc371012c6251699010c9549d6176a4c89b7f3c4ed4435d4b0f29de6a7812785",
+      "size": 7759
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/travel-chat-multiprovider.spec.ts",
+      "sha256": "5b88b2f45a798550d26b2dd8a6e9637b25f206b79991d3e592118455e8ad45a8",
+      "size": 13013
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/travel-chat.spec.ts",
+      "sha256": "637f410cf3818331a1d0eae2982beed342b3e7b6730c49af2bfb6ceb38882b43",
+      "size": 10016
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/test/worker.spec.ts",
+      "sha256": "5a508f1359ed5d4f4480ba83f5c67b71812b287aadbf409f9e40048b3cb768d2",
+      "size": 4916
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/tsconfig.json",
+      "sha256": "b07653363ef5f5a3852111c33cc4069fa55cd4d9d4b8857c21b91849260bb743",
+      "size": 452
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/vitest.config.ts",
+      "sha256": "986425cf23e0acb97143f11229d6e310a87bdc564c7c7e4e3f586ec2d84bf7d5",
+      "size": 1632
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/wrangler.phase1.example.jsonc",
+      "sha256": "beff1a8223c76dce06a1fa672575f3cbcb4ef6df5183b892e1471a74587517d8",
+      "size": 1161
+    },
+    {
+      "kind": "owned",
+      "path": "cloud/lite-relay/wrangler.phase2.example.jsonc",
+      "sha256": "49210e25f54f02faaa166ce0454010996d64ff428f689897e2b8da81a26fc411",
+      "size": 1361
+    },
+    {
+      "kind": "seed",
+      "path": "config.json",
+      "sha256": "1f7e608cce3713b15143394e967dfcd64bc4fe954a210f1372e0253bfc7e04aa",
+      "size": 2442
+    },
+    {
+      "kind": "owned",
+      "path": "config.json.example",
+      "sha256": "7fb617701b6062f10d37e0fad21747902009b87d111fb64dc79aed5fe55c7654",
+      "size": 4113
+    },
+    {
+      "kind": "owned",
+      "path": "config_manager.py",
+      "sha256": "7471a4c498fb6c97816b96d931ee650c3d46b8f12632a07f9f3170818465a307",
+      "size": 174210
+    },
+    {
+      "kind": "owned",
+      "path": "constants.py",
+      "sha256": "d80c6c7ffa3aec7aa1c6e79737363da88bcd3f22be171ceaccf392767565003d",
+      "size": 14732
+    },
+    {
+      "kind": "owned",
+      "path": "curation_manager.py",
+      "sha256": "5787746e0613bb823095eaebb3c91f11eab8f8a5f91961ddf4ac291347743ed1",
+      "size": 21719
+    },
+    {
+      "kind": "owned",
+      "path": "custom_tool_manager.py",
+      "sha256": "efef9fe918a5d11ada853c875df77b4c77335f4fd25b0d7ef350cb09d5e4ad8a",
+      "size": 27179
+    },
+    {
+      "kind": "owned",
+      "path": "custom_tools/README.md",
+      "sha256": "ba2d4846dcba9ba8f907ed7f1431718abcad4be6e2d0db8708ac5a427d181bf7",
+      "size": 68
+    },
+    {
+      "kind": "owned",
+      "path": "custom_tools/example_tool.py",
+      "sha256": "7298e4268d736be37084cf46647b23e461517eebf742d2858ae945b67804fb94",
+      "size": 1669
+    },
+    {
+      "kind": "owned",
+      "path": "debug_gemini_models.py",
+      "sha256": "34cff9e0673d6f432728d07f7d3b7832dd46c2ef6e62c936037e61504ce985f0",
+      "size": 1191
+    },
+    {
+      "kind": "owned",
+      "path": "discord_manager.py",
+      "sha256": "0a401aac0cb8faae9b305c6ec15241e12c6be009978a1c1e904607903604d606",
+      "size": 111895
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/00_getting_started.md",
+      "sha256": "48aba18ccc20049aac19f25a79776b01e0f8f2a3f98c9b9b2911edfe0d442ba2",
+      "size": 3519
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/01_initial_settings.md",
+      "sha256": "cd00e224d5223ee2a04ca2239783abb0f1e842aec88630640172d1a0297510c9",
+      "size": 6703
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/02_ui_overview.md",
+      "sha256": "8ce9e8db818c5ee4dbb60ab8f641a1696a49bcfa25fd1592d2a9f57731d2da0c",
+      "size": 5145
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/03_chat_and_logs.md",
+      "sha256": "0414024d8a166ddb9443c0ae985308ec33614211394514226812e3c7c2421161",
+      "size": 8480
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/04_memory_notes_knowledge.md",
+      "sha256": "c8de3481baba8d10548990928d801c2324d1d439d6cb3aec5c15e528dd986724",
+      "size": 7181
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/05_autonomy_delegation_atelier.md",
+      "sha256": "06667f27eef28d1356093848df30f7e126af836ae38c6efd8d60de3a890ddd32",
+      "size": 6690
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/06_closet_items.md",
+      "sha256": "d7ad6249774e51faaeaae20a2e28631acb27725d70bf7bea7ba45568dd0f7b0f",
+      "size": 3842
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/07_external_connections_lite.md",
+      "sha256": "7433d72f989d2b0a465b23b35e36a8a37213c586167276b69b1376cf9c51e452",
+      "size": 40034
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/07a_lite_cloud_setup.md",
+      "sha256": "277b82dd0db31294f4acb4e8e2c54c649a1bc22ec22b0c6d43b7d009542ee2d7",
+      "size": 16731
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/08_models_api_costs.md",
+      "sha256": "49b60d45d3a68593cd832586626e411b8e62ed7b6fe28855e66f6958e1f36429",
+      "size": 6743
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/09_notifications_time_calendar_weather.md",
+      "sha256": "dc61656ec73a82e6263ac27fec4a57b1ee0ba52e3620d7fc5db3a17af8c0954c",
+      "size": 4177
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/10_outing_import_export.md",
+      "sha256": "012244c7c577107d916f0018b2a88c8b9080b59e9077b9e7c69c497dd45f2f2c",
+      "size": 15560
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/11_troubleshooting.md",
+      "sha256": "dc7eefabb68dea586cfd4216d445fc14e2b87cf2668e421af7da26760c932352",
+      "size": 9243
+    },
+    {
+      "kind": "owned",
+      "path": "docs/user_guide/README.md",
+      "sha256": "014bf7cce060626f6ec183e20f6d33e23b176af3a1e8f59c62f305a753680b04",
+      "size": 1080
+    },
+    {
+      "kind": "owned",
+      "path": "dreaming_manager.py",
+      "sha256": "7448d415af2228e6d9c8162438db94c5ea9cae2bfadb6c8df053d37c0105d41b",
+      "size": 58611
+    },
+    {
+      "kind": "owned",
+      "path": "entity_memory_manager.py",
+      "sha256": "e06351b701e20a0317cbf52ee67e749805a72986cf01bf3d51064d7dac96dec6",
+      "size": 93627
+    },
+    {
+      "kind": "owned",
+      "path": "episodic_memory_manager.py",
+      "sha256": "a0b1842fa8441ad826eaff8e6564a7cd5dc2af1e9bb1a6e0f605604e751e54c3",
+      "size": 77181
+    },
+    {
+      "kind": "owned",
+      "path": "file_lock_utils.py",
+      "sha256": "efcec40978b7103a0e9424ebafc132af30ee6db88f7449941251294937c7f66d",
+      "size": 9430
+    },
+    {
+      "kind": "owned",
+      "path": "find_line.py",
+      "sha256": "8f6111ebba857736564c5280ab0e355d05b733c5818e49171cf96060b69e682a",
+      "size": 425
+    },
+    {
+      "kind": "owned",
+      "path": "game/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "kind": "owned",
+      "path": "game/chess_engine.py",
+      "sha256": "ed19bbc83e30e1becd414848731b5eea2f104f72b118f02a0ee2670576df0c3a",
+      "size": 8247
+    },
+    {
+      "kind": "owned",
+      "path": "gemini_api.py",
+      "sha256": "ee8bbefbd169fba0fd4ec90572e602005d2c936e5a74f731612ffc1aae7a61dc",
+      "size": 131745
+    },
+    {
+      "kind": "owned",
+      "path": "gemini_explicit_cache_manager.py",
+      "sha256": "a3fff019cca5fd752316455b603af55a3228d0459f56e5f90ca99719af2793b3",
+      "size": 17237
+    },
+    {
+      "kind": "owned",
+      "path": "generic_importer.py",
+      "sha256": "56a7023d0e3b628cf73abdce510a461a2e679843dd837155286bf8cd25fdd8fd",
+      "size": 7192
+    },
+    {
+      "kind": "owned",
+      "path": "goal_manager.py",
+      "sha256": "e3251afc69ed5d65937239440fb1a9ad2c98edac03a3698fe5c89c15f9be16a7",
+      "size": 24543
+    },
+    {
+      "kind": "owned",
+      "path": "google_auth_helper.py",
+      "sha256": "8b4c99002147c865017b82aa2cf392c2ca36e597b3120c43ea13cacfab3d1223",
+      "size": 11589
+    },
+    {
+      "kind": "owned",
+      "path": "google_calendar_service.py",
+      "sha256": "08de71b623c33c07af211f2f76ec291d82419a0b17f33a5b379e800b0eccee67",
+      "size": 43702
+    },
+    {
+      "kind": "owned",
+      "path": "icon-maskable.png",
+      "sha256": "74ee870554b5d4fd94c8869530d39f1a2b811905f28f2b039edb0b40ab37074d",
+      "size": 292034
+    },
+    {
+      "kind": "owned",
+      "path": "icon.png",
+      "sha256": "5ecf756f51ef31e8085e0be0db079e4e88fb95dae415f347c41e42069bc2fa0e",
+      "size": 1250993
+    },
+    {
+      "kind": "owned",
+      "path": "identity_edit_request_manager.py",
+      "sha256": "20e0b2db13c0ca01625315bb8dfaba209fbed7371db357c25ab6727192cc829d",
+      "size": 13012
+    },
+    {
+      "kind": "owned",
+      "path": "implementation_plan.md",
+      "sha256": "4ca322822c540176592d1738860fa876e128441f762a5f73bd37491a899fac69",
+      "size": 1540
+    },
+    {
+      "kind": "owned",
+      "path": "install.js",
+      "sha256": "f3b5c512a537f0e1301d01bed43d260ec1df480b1506e1a07c124ec0197b8e2b",
+      "size": 602
+    },
+    {
+      "kind": "owned",
+      "path": "letterbox_manager.py",
+      "sha256": "0dbea55f68444ec8f16c23cd6be969c0e2e56d7fd7fb4278959e6e51137d48a0",
+      "size": 9059
+    },
+    {
+      "kind": "owned",
+      "path": "line_manager.py",
+      "sha256": "86c947901f4ffa8c764c300817fe9a9c0068d46f2612bfd8cb2f8a7c3bea16c1",
+      "size": 18251
+    },
+    {
+      "kind": "owned",
+      "path": "lite_cloud_setup.py",
+      "sha256": "0d9f739f779b4a813628f53e769f7150e46ac89f496cfdff14850eb8b121a80a",
+      "size": 186296
+    },
+    {
+      "kind": "owned",
+      "path": "lite_runtime.py",
+      "sha256": "c4a0f129049695983aef94eb4d5abc5420a1c7888b757a8808107541f3250c62",
+      "size": 6688
+    },
+    {
+      "kind": "owned",
+      "path": "lite_travel.py",
+      "sha256": "cd1027028f817f819e8e4c8e60bdcc2726a911b687208e40b7ca044639ee248b",
+      "size": 112013
+    },
+    {
+      "kind": "owned",
+      "path": "lite_travel_operations.py",
+      "sha256": "006fe98ee7bd2e8364ccca4708e7b31e22ae69a94bc98e6fd89556db5e6dbd6b",
+      "size": 14478
+    },
+    {
+      "kind": "owned",
+      "path": "llm_factory.py",
+      "sha256": "be3796018c2604c576dafce7e7718216da581067e6367c2de4a159a91c0b4596",
+      "size": 39805
+    },
+    {
+      "kind": "owned",
+      "path": "memory_archivist.py",
+      "sha256": "1b316be3ad9c8474297592b606f651308d4473a4359cab7bbdb43ee74dddcf39",
+      "size": 20784
+    },
+    {
+      "kind": "owned",
+      "path": "memory_manager.py",
+      "sha256": "aea164834a95559e8b1da4e60b65c678d2763084d5a25299dd2e6077e97db444",
+      "size": 1925
+    },
+    {
+      "kind": "owned",
+      "path": "memory_steward_evaluation.py",
+      "sha256": "1864574ba207b45f4f703f0363b20014f52f52ea3cb18ba3f9ca00046f68e0da",
+      "size": 26042
+    },
+    {
+      "kind": "owned",
+      "path": "memory_steward_model.py",
+      "sha256": "1f2c0b63e87dfa5f2c25881014da66b8b5206657b5de8f021f0ade259c72f05c",
+      "size": 6262
+    },
+    {
+      "kind": "owned",
+      "path": "memory_steward_observer.py",
+      "sha256": "3094c5368f92da05c6927972a3db15974a376261a0445d3282e69bb386d9dfda",
+      "size": 18513
+    },
+    {
+      "kind": "owned",
+      "path": "metadata_backup/1.root.json",
+      "sha256": "f673be607b18cbfda6ea20b64ed62f3c8c883f6bf1239c41290767f2ca7cde3e",
+      "size": 1913
+    },
+    {
+      "kind": "owned",
+      "path": "metadata_backup/root.json",
+      "sha256": "bac239f48435c9e40c69031b3eb9a4221fd90ea2611daba05f1fb928888e24e3",
+      "size": 1914
+    },
+    {
+      "kind": "owned",
+      "path": "metadata_backup/snapshot.json",
+      "sha256": "cacfa11233851fe83fe8a2e009a826a7cad4f0768bb6dca4193ebc9d2edb9879",
+      "size": 434
+    },
+    {
+      "kind": "owned",
+      "path": "metadata_backup/targets.json",
+      "sha256": "e3f1bd0de50fce019db1c89d1223f696fb59f8559d60fe9ea23b47907d7150e6",
+      "size": 3177
+    },
+    {
+      "kind": "owned",
+      "path": "metadata_backup/timestamp.json",
+      "sha256": "6743f55185344891f5f71d54b7de6d71c85a99001ba979025de7b768f06cef7f",
+      "size": 436
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/badge.png",
+      "sha256": "1a8ca65c877fbcd7ee1da7f68afdbc9b80f6d9c254ad3ebc173221ad0fa9fe43",
+      "size": 579
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/index.html",
+      "sha256": "a0b72941e78616ac755055a890dd1582422b5be378dd82bdc21735cc565245b2",
+      "size": 30166
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/manifest.webmanifest",
+      "sha256": "60620d0d19e699506a3f54dcf37830351c5ca4bf2de97ddbc0fba1d0d1bef61e",
+      "size": 608
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/service-worker.js",
+      "sha256": "d97e3de5751df6c8df5c77525ea48000f64b9914d9cb1d36378f57c644f2815d",
+      "size": 2519
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/static/app.js",
+      "sha256": "df10b30b0539049b103734700ed6308fb8a036166e18b76b300877a723d6955c",
+      "size": 172947
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/static/lite-continuity-state.js",
+      "sha256": "b70c50abddd62942de4b3c60607ce72ac9d821dc2ad17e33f4374fadd0a680ae",
+      "size": 2052
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/static/pairing-handoff.js",
+      "sha256": "01ecb247c2e8626b5ddc511198c18df2bddabc310a319bb0bcc2101131c6b301",
+      "size": 1304
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/static/styles.css",
+      "sha256": "6477f99e3c71bc970d36ac2680c8c6bb8cec9e8138a0c950402892b089f965b0",
+      "size": 39707
+    },
+    {
+      "kind": "owned",
+      "path": "mobile_app/static/travel-adapter.js",
+      "sha256": "7ed25402814880ead2658b41e9c726ae8e1b7984af3422035aaf647b5256b143",
+      "size": 12779
+    },
+    {
+      "kind": "owned",
+      "path": "motivation_manager.py",
+      "sha256": "310ffcb60ef9cb4b52508a89e375381ea4de9a8118a9c0d86f7dcf11260e0d85",
+      "size": 59968
+    },
+    {
+      "kind": "owned",
+      "path": "nexus_ark.py",
+      "sha256": "c9d77f3b39d942bf5923a6cff2d175d2c8581d5c894970faef560412c6ce7358",
+      "size": 894787
+    },
+    {
+      "kind": "owned",
+      "path": "note_storage.py",
+      "sha256": "ac99e975087071b9468ab06def06093985b392e3a54300908248a3cb5377a567",
+      "size": 4857
+    },
+    {
+      "kind": "owned",
+      "path": "old_task_list.md",
+      "sha256": "84a5acc849ffc1811468e877f087c2e0f447226dab381eedd657093281c261f1",
+      "size": 13147
+    },
+    {
+      "kind": "owned",
+      "path": "onboarding_manager.py",
+      "sha256": "db857579a8195f6e24bb11826fc264901e29cbddb3dceb16393652b9b65f8249",
+      "size": 2754
+    },
+    {
+      "kind": "owned",
+      "path": "persona_contract.py",
+      "sha256": "b081d8bff61a40f8c1430b1243e9e101509073877cdf142a19cbdaea377724b4",
+      "size": 8964
+    },
+    {
+      "kind": "owned",
+      "path": "pinokio.js",
+      "sha256": "c6fa0ca727c3ca6e7e866dbafc714b705284f6c19ec18c9ef897c955c46ab406",
+      "size": 299
+    },
+    {
+      "kind": "owned",
+      "path": "playwright_utils.py",
+      "sha256": "525b851a5703a5d2c15628578d12d547e0d47a6a4e967c6a370f48ca2ba12206",
+      "size": 2367
+    },
+    {
+      "kind": "owned",
+      "path": "pricing.py",
+      "sha256": "385cbb065d299439b55d2e747081987998a089c29acaa133bb3ece17df2960dc",
+      "size": 7635
+    },
+    {
+      "kind": "owned",
+      "path": "procedure_memory_manager.py",
+      "sha256": "f097410ffce8003907081d768a4e0ba6cdaebb8aa881062d1e01fac0c182513f",
+      "size": 19328
+    },
+    {
+      "kind": "owned",
+      "path": "public_tools/cleanup_log_duplicates.bat",
+      "sha256": "811459ba47419284879b6a20865932623cbdd14f10ff2941553ad7321a6c8321",
+      "size": 2121
+    },
+    {
+      "kind": "owned",
+      "path": "public_tools/cleanup_log_duplicates.py",
+      "sha256": "821e63e483483c3fb85cc0f1e74749259da3efc09c33b31d0b3b8100ac5ef885",
+      "size": 3699
+    },
+    {
+      "kind": "owned",
+      "path": "purpose_profile_manager.py",
+      "sha256": "78dcb711d6e9be380e1d274addeb89481e0f0867ef8ed83b16357e96cccc99f7",
+      "size": 36532
+    },
+    {
+      "kind": "owned",
+      "path": "pyproject.toml",
+      "sha256": "67521586b13355f6442bc25d04789cc58ba06c14eb58272d150d68465251e133",
+      "size": 2845
+    },
+    {
+      "kind": "owned",
+      "path": "rag_manager.py",
+      "sha256": "04efbb0573074d47080d02a57b1299a89f0befe7e942096fa945803ca4e0fbc9",
+      "size": 122660
+    },
+    {
+      "kind": "owned",
+      "path": "release/lite_runtime/package-lock.json",
+      "sha256": "325dee56e3b280de86b66a54d89b5d85af8dede03da8d4503cc8a2368b46f384",
+      "size": 47691
+    },
+    {
+      "kind": "owned",
+      "path": "release/lite_runtime/package.json",
+      "sha256": "a5384c66a9d8bf90e45f1a951a66982e8d050c0a2a90838749165e11eb1e0091",
+      "size": 304
+    },
+    {
+      "kind": "owned",
+      "path": "release/update_host_bridge/ApplyLegacyHostMigration.ps1",
+      "sha256": "91739c050269c4521c6af4a31e1f41a00206bfc0eedb32ba63fe912c9578f77b",
+      "size": 6703
+    },
+    {
+      "kind": "owned",
+      "path": "release/update_host_bridge/Start.bat",
+      "sha256": "34529f95471c044bf199929cc24523f201f71588e066b74616e416523042770d",
+      "size": 1118
+    },
+    {
+      "kind": "owned",
+      "path": "research_subscription_manager.py",
+      "sha256": "4d2a087f66d639deae7647e166acede34cf815c5be1a4064f2b118d3546a8119",
+      "size": 9913
+    },
+    {
+      "kind": "owned",
+      "path": "research_thread_manager.py",
+      "sha256": "1f520edc641d0a9b7444b2615535491fe1e9c3a638107ba455804e1d6e8dcc90",
+      "size": 20351
+    },
+    {
+      "kind": "owned",
+      "path": "resolution_memory.py",
+      "sha256": "b2354b35d80aceb6f27c263c22a782f68cc278939e3b42cfe2aaec96620b8b11",
+      "size": 2576
+    },
+    {
+      "kind": "owned",
+      "path": "restore_graph.py",
+      "sha256": "96f6e8fc80e664f41529c060ad2edcf6148f8a1f9b1bf0cd35e7ade827e124c2",
+      "size": 50463
+    },
+    {
+      "kind": "owned",
+      "path": "restore_graph_part2.py",
+      "sha256": "e4de86ba73ed4fa933ed0239d2ff8e2245acd527a85d5cc2eac9d7538f28126b",
+      "size": 18101
+    },
+    {
+      "kind": "owned",
+      "path": "retry_importer.py",
+      "sha256": "21c02b72c2082d15f0d75fe2c1ddd7d2186f72d9923d46ff49958d16732ccad1",
+      "size": 2516
+    },
+    {
+      "kind": "owned",
+      "path": "room_manager.py",
+      "sha256": "b9fbe6f36661b84b7fc2bd9e9d36c061c47a33228032f7047b06a169a79473f2",
+      "size": 64636
+    },
+    {
+      "kind": "owned",
+      "path": "run_api_server.py",
+      "sha256": "febeb7ae87ce11c68a0796dac2c89c8a50c968b47d8ab67debf3c0d3b42f3f04",
+      "size": 569
+    },
+    {
+      "kind": "owned",
+      "path": "run_load_config.py",
+      "sha256": "2a8ebc2a8d4051e55e3a4199a58a5b63c510c46ba74dab0be4e1421c26122df3",
+      "size": 135
+    },
+    {
+      "kind": "owned",
+      "path": "run_restore.py",
+      "sha256": "cf115e4f340fa27424a2eddb5598bde737265b804217cb9ed833fe2ae46797fc",
+      "size": 298
+    },
+    {
+      "kind": "owned",
+      "path": "runtime_tuf.py",
+      "sha256": "8cb0468cb6beb518c9b763011ad66600c31c71542ffeb554bd1ff1875fbb8be2",
+      "size": 9166
+    },
+    {
+      "kind": "owned",
+      "path": "session_arousal_manager.py",
+      "sha256": "6730828860c0ce4d3c7f4c81420f98fc170c8dd691bcfecab7e1061930537767",
+      "size": 8807
+    },
+    {
+      "kind": "owned",
+      "path": "settings_backup_manager.py",
+      "sha256": "b878e5b6c618ef94ab7d1fab667e6b8cfc200bdb72043a9e75640c848d346fd4",
+      "size": 7249
+    },
+    {
+      "kind": "owned",
+      "path": "signature_manager.py",
+      "sha256": "ae22e734c71784f6823e5ebc1ef4dafb9a80cbe7f80aa78bbb4fc61751f6d8dd",
+      "size": 2889
+    },
+    {
+      "kind": "owned",
+      "path": "site/404.html",
+      "sha256": "57f270a00ec711aa874e575dd664471d6d2dc1dfa32387ddaad003056bbb4b7a",
+      "size": 738
+    },
+    {
+      "kind": "owned",
+      "path": "site/assets/favicon-180.png",
+      "sha256": "82ace47deba73e997b9326924792ad6217722481efed7662ad359b8f7dc80e0d",
+      "size": 58973
+    },
+    {
+      "kind": "owned",
+      "path": "site/assets/hero-ark.webp",
+      "sha256": "da2e664335368510c153f7e0df527fb0de6a83512f735c691f4f60eb97df963e",
+      "size": 53810
+    },
+    {
+      "kind": "owned",
+      "path": "site/assets/og-image.jpg",
+      "sha256": "c6a6819f694c9b10221ae1f7a9a4f68cc103bdad1bef32ff94785b6b039329e2",
+      "size": 107318
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/00_getting_started.html",
+      "sha256": "5bd3726e2c18663be5ba44f71020a91697706828e29b5f353c82c19ea0f1352b",
+      "size": 6593
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/01_initial_settings.html",
+      "sha256": "b7fd595cb45511f2204862868a90ded7548dfb9792be889653d7f3bae888d987",
+      "size": 9920
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/02_ui_overview.html",
+      "sha256": "65cd2b2d40fecff9e9ec31245af909db78192c25352e84f6d5f8d7f32e005c9e",
+      "size": 8269
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/03_chat_and_logs.html",
+      "sha256": "86788e9665dce7cd53976532f9cc444e03f99d2ff37a4e9be0baaf0b84088f29",
+      "size": 11513
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/04_memory_notes_knowledge.html",
+      "sha256": "b49b19b0e38eec04436d54d52bf8e318c115c967916089f27d27b069d56c2288",
+      "size": 10336
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/05_autonomy_delegation_atelier.html",
+      "sha256": "bf18a5b4b16bfdf9457bc16891a5902953d0093ba7beece9d48bcb0b3cc56b29",
+      "size": 9738
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/06_closet_items.html",
+      "sha256": "a6c149568f39198bb7e5b3ec29a6f14e94fff9df4c5a1203927b1aaa872d1061",
+      "size": 6833
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/07_external_connections_lite.html",
+      "sha256": "59e7437c69b2d4a24e8decb3b933f522acb3ca405fe2ef2059842c4855f9115f",
+      "size": 43882
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/07a_lite_cloud_setup.html",
+      "sha256": "41ba5e13ed9f14026f2fcec027865d0c0f94aee861fba2a04688d9172f7135bc",
+      "size": 20985
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/08_models_api_costs.html",
+      "sha256": "c0c5d0ed3b22d627417673cf00da8b4f2ad11b5fe38c7e03f6d5a2f14ae510c3",
+      "size": 9804
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/09_notifications_time_calendar_weather.html",
+      "sha256": "37ea0808d78ba831ba4b247eb2587c0268e37bd394329fa9be3fb4f721c93e3d",
+      "size": 7113
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/10_outing_import_export.html",
+      "sha256": "f85056e848a9fb38c81a261082cb9c34e9c20eae80fb488696a12b5998d7e866",
+      "size": 18771
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/11_troubleshooting.html",
+      "sha256": "b9549ec684fac7e8a9777eb2f0cdbc4978a40a6366c77d48586ec6cf89b3266e",
+      "size": 12571
+    },
+    {
+      "kind": "owned",
+      "path": "site/guide/index.html",
+      "sha256": "4976ea5b8002b68721a058586da91224da140e0f19a610ee7c5bc82e138f641a",
+      "size": 4050
+    },
+    {
+      "kind": "owned",
+      "path": "site/index.html",
+      "sha256": "a4acf7c4c3438724021aded3b660a120429e1520caf8a0cd29b626365ce1d8ce",
+      "size": 12265
+    },
+    {
+      "kind": "owned",
+      "path": "site/script.js",
+      "sha256": "33c8664335bebbbd2432157e1dbcb4ffa158ce20dbc752aba9a27451901131b7",
+      "size": 486
+    },
+    {
+      "kind": "owned",
+      "path": "site/style.css",
+      "sha256": "8a64360c69e4a142e0fb09f5eb322564bb477d95fab6fd88a471d956c55d1215",
+      "size": 11702
+    },
+    {
+      "kind": "owned",
+      "path": "soul_injector.py",
+      "sha256": "d02fbc766b469a4e7c054b4de006757e7b0835afc2fb92ec0f60fa93fc18c812",
+      "size": 6343
+    },
+    {
+      "kind": "owned",
+      "path": "src/features/__init__.py",
+      "sha256": "5481fbd2f6c35be068d10dc59eaa155634a1b8cfd45d2b1b9bfbcc37d1a74911",
+      "size": 268
+    },
+    {
+      "kind": "owned",
+      "path": "src/features/_item_desc_generator.py",
+      "sha256": "0cf1f63949b1c92f308d0bb55bb1affbfb8f9e1311d23779e354998b4d2ab4f0",
+      "size": 4816
+    },
+    {
+      "kind": "owned",
+      "path": "src/features/_recipe_generator.py",
+      "sha256": "7b6c2244ecd8af4df8f8543ad8ac3aa4828388a1c236d6b0e1089afc9c355b6c",
+      "size": 7708
+    },
+    {
+      "kind": "owned",
+      "path": "src/features/item_manager.py",
+      "sha256": "dd80c6ed7895711d9bb3452e21b779dc8e3ef5abb683a72b310ae39021caba0b",
+      "size": 16753
+    },
+    {
+      "kind": "owned",
+      "path": "start.js",
+      "sha256": "5a65869f06d20f0e2e57bf4e2d4d85c538d4d39ab47fd86d0faf7bf8fe9f11f1",
+      "size": 204
+    },
+    {
+      "kind": "owned",
+      "path": "stt_manager.py",
+      "sha256": "c1347ed5eb626a409ee42fd64e86eebbe10abda7edc747adf8b07479d4eafb74",
+      "size": 12646
+    },
+    {
+      "kind": "owned",
+      "path": "summary_manager.py",
+      "sha256": "02255d354c1ee2f98237ed409797f1f73af7c18ebf98368b2e50a8e24666313a",
+      "size": 6907
+    },
+    {
+      "kind": "owned",
+      "path": "themes/lilac_theme.py",
+      "sha256": "619353a7b8d826eea13a14fa0edc17a99011fb2a8da5630a35a1c440c7c64cdd",
+      "size": 2046
+    },
+    {
+      "kind": "owned",
+      "path": "themes/nexus_ark_theme.py",
+      "sha256": "30054f60994a66589f2a59e6a7f1b8037ca9a2332e86d353a20042bb530a2816",
+      "size": 2914
+    },
+    {
+      "kind": "owned",
+      "path": "themes/nexus_modern.py",
+      "sha256": "8a19337ead1c7baf6b00a1321440c050ee8ca0d268cf24fa5c9c9d1c7bc5f05d",
+      "size": 2927
+    },
+    {
+      "kind": "owned",
+      "path": "timers.py",
+      "sha256": "770f274e10d65dd7417bfa005ab95553ea15e07681b1654c9442145bd5e48df9",
+      "size": 37301
+    },
+    {
+      "kind": "owned",
+      "path": "tool_usage_stats.py",
+      "sha256": "d59829649b0031b07901147927ea0c059d888ea5a5b0067fcd4e727eb01da94f",
+      "size": 7336
+    },
+    {
+      "kind": "owned",
+      "path": "tools/action_tools.py",
+      "sha256": "0d5b460963da8508b957c191fcace6c04ce99b0d26b946b9c5b8ab3525342eae",
+      "size": 7534
+    },
+    {
+      "kind": "owned",
+      "path": "tools/agent_delegation_tools.py",
+      "sha256": "7d990e5a6558d4ad4d678035658ca22c3629402cd165d0bf6073cdf9b927ae1d",
+      "size": 49670
+    },
+    {
+      "kind": "owned",
+      "path": "tools/alarm_tools.py",
+      "sha256": "ddb391c5dcd82ff5c7d84bd4517f3c68b0044a7bb75e98aeb1d28b1200c0213e",
+      "size": 4080
+    },
+    {
+      "kind": "owned",
+      "path": "tools/autonomy_tools.py",
+      "sha256": "6026db8984567fa57c86fb07d114c483062d58dfd675c3f4a89f422582c2b174",
+      "size": 15339
+    },
+    {
+      "kind": "owned",
+      "path": "tools/capability_policy_tools.py",
+      "sha256": "af63717df4349578efc5a29e7b806b5043c094ac61378fd0f788e751d1012aaa",
+      "size": 2721
+    },
+    {
+      "kind": "owned",
+      "path": "tools/capability_tools.py",
+      "sha256": "65f799f596bc5e08adc633b9080e4a9f70081d17bc8fb76df26a7e7b02cf73a0",
+      "size": 3722
+    },
+    {
+      "kind": "owned",
+      "path": "tools/chess_tools.py",
+      "sha256": "c4d925c0a3c48a519fa6be92c78390d28416c271fdb7cf5ce105e1a587725152",
+      "size": 1956
+    },
+    {
+      "kind": "owned",
+      "path": "tools/closet_tools.py",
+      "sha256": "250c86318f94dcdd075a75847a7bc392bd6f4104a4585cd4810d730b1b71407a",
+      "size": 13344
+    },
+    {
+      "kind": "owned",
+      "path": "tools/creative_tools.py",
+      "sha256": "b77214ab094edaa27e9a2e74ebeae878330ca351928fbca5a7debd6c7d821fab",
+      "size": 5084
+    },
+    {
+      "kind": "owned",
+      "path": "tools/developer_tools.py",
+      "sha256": "dfac8f49de216ddf887d97317542f84c5882b936470fba109a7496e73de99b2b",
+      "size": 6080
+    },
+    {
+      "kind": "owned",
+      "path": "tools/discord_tools.py",
+      "sha256": "2d2a001bb10a7de511365d6d28d2046b779dc3bb1b094c3699148e66b3e3069d",
+      "size": 2457
+    },
+    {
+      "kind": "owned",
+      "path": "tools/entity_tools.py",
+      "sha256": "8d64e543dd31429ac215ea2e63b19e2421fa51c9c84a923f661c97776eb569f2",
+      "size": 2451
+    },
+    {
+      "kind": "owned",
+      "path": "tools/gemini_importer.py",
+      "sha256": "423285457997fd54a41eac8300ad71bee6403550bf3187895e62e2f11040026c",
+      "size": 6472
+    },
+    {
+      "kind": "owned",
+      "path": "tools/google_calendar_tools.py",
+      "sha256": "2a6593b8cf619db4b655c9d61a92d97b184e301a584314a02479ece2ba61e946",
+      "size": 28263
+    },
+    {
+      "kind": "owned",
+      "path": "tools/image_tools.py",
+      "sha256": "497db231812b7a669b683ac03685cbf9b89199f8fe3af55a6c74f76c343185ce",
+      "size": 45140
+    },
+    {
+      "kind": "owned",
+      "path": "tools/introspection_tools.py",
+      "sha256": "ca08e1ca612b28370d1c6755dedc02f08c6da074aeb76955ed1c9cc207a0fb39",
+      "size": 19781
+    },
+    {
+      "kind": "owned",
+      "path": "tools/item_tools.py",
+      "sha256": "857cd08aad149b47cc0d56abb4665651b7886b43df52df1e2281be2131d263fe",
+      "size": 28982
+    },
+    {
+      "kind": "owned",
+      "path": "tools/knowledge_tools.py",
+      "sha256": "5524b45dbdb581c7c5d81661c88129f0f5ada624177f15557ef843f13561b503",
+      "size": 3239
+    },
+    {
+      "kind": "owned",
+      "path": "tools/letterbox_tools.py",
+      "sha256": "5dfb78934466c9d43a13916352ac3ff33045ac8e85eefaa0cbe846177d7920c3",
+      "size": 4137
+    },
+    {
+      "kind": "owned",
+      "path": "tools/memory_tools.py",
+      "sha256": "3b7fbf19f6457a0271a233ca1341c3d91ab654b0a4f5f0dc1542b9b471ff9aa6",
+      "size": 50736
+    },
+    {
+      "kind": "owned",
+      "path": "tools/music_tools.py",
+      "sha256": "1dad46d6ad33e01b8e8e6b63544dd8b415fd18ea1654899d5a0844df87d8fefc",
+      "size": 4645
+    },
+    {
+      "kind": "owned",
+      "path": "tools/notepad_tools.py",
+      "sha256": "76ec2910e7c964a6e46f2184bd846f10e5f233b26dec4534d69487dd4878c765",
+      "size": 7030
+    },
+    {
+      "kind": "owned",
+      "path": "tools/notification_tools.py",
+      "sha256": "7f7532f8d78c9092b678b5908400e9118a9ea5b3e767276663cd4dfb04543a07",
+      "size": 3406
+    },
+    {
+      "kind": "owned",
+      "path": "tools/path_policy.py",
+      "sha256": "25c15fbe4adb3cc3bc5ad9a159c43942c86aed8f6d5dee58c93b44a3b58a996e",
+      "size": 14979
+    },
+    {
+      "kind": "owned",
+      "path": "tools/persona_contract_tools.py",
+      "sha256": "1ad4d9daadfc3a3c345ed8cd74d0b8dc7ced985739b2f127c9e8fc37234202e2",
+      "size": 2106
+    },
+    {
+      "kind": "owned",
+      "path": "tools/procedure_tools.py",
+      "sha256": "71007178064e3a4cb8ca0ee436d163711ad4986cf0bb97f839eabe9775ce65f1",
+      "size": 7228
+    },
+    {
+      "kind": "owned",
+      "path": "tools/purpose_profile_tools.py",
+      "sha256": "13653713c371c961ae06679aec0139456faf8052e2e09c6bd0cd596011887287",
+      "size": 3942
+    },
+    {
+      "kind": "owned",
+      "path": "tools/research_subscription_tools.py",
+      "sha256": "4d8d5f9e51af41552b6a114d00c9e5c151f88bcc67299caf39d82fb824222d40",
+      "size": 9154
+    },
+    {
+      "kind": "owned",
+      "path": "tools/research_thread_tools.py",
+      "sha256": "ac735aca13815593d589aadee607eb2a9af231618fe0f9e9c3a567566d899478",
+      "size": 4222
+    },
+    {
+      "kind": "owned",
+      "path": "tools/research_tools.py",
+      "sha256": "5b6e5dd6897ed65a684f28b57cf53a68a3f4700ee5c9921984e218973ff9e7f8",
+      "size": 6299
+    },
+    {
+      "kind": "owned",
+      "path": "tools/roblox_screenshot.py",
+      "sha256": "63e382d520aeb12af9d0642896157ac807499993112d7d7f4d057c13edbce998",
+      "size": 10626
+    },
+    {
+      "kind": "owned",
+      "path": "tools/roblox_tools.py",
+      "sha256": "dd4a1164d71e3ceac836ceda9c5bae7ceabfc86d806a9c8db540985a499c2de2",
+      "size": 16280
+    },
+    {
+      "kind": "owned",
+      "path": "tools/roblox_webhook.py",
+      "sha256": "33da34e7add3a2c888d93558fc6e468f381244306144494dd698f07f21825fe2",
+      "size": 18334
+    },
+    {
+      "kind": "owned",
+      "path": "tools/space_tools.py",
+      "sha256": "2f80f8eaaee14ce3281d1bd920fe8d8c9dc05115994b0c04cca8ebf084bf4c22",
+      "size": 14501
+    },
+    {
+      "kind": "owned",
+      "path": "tools/timer_tools.py",
+      "sha256": "41341fb8c11239f7923359da9433b242e02fbcb50163090519be1bc94dcd51a7",
+      "size": 4820
+    },
+    {
+      "kind": "owned",
+      "path": "tools/twitter_tools.py",
+      "sha256": "755c85b580630be5098242caf111efcb3a96f64d8326df2b611e579e1849f4fa",
+      "size": 25017
+    },
+    {
+      "kind": "owned",
+      "path": "tools/watchlist_tools.py",
+      "sha256": "9e8b2718f6bec08b07725dff253b8312f669f0158173ea5940671ece2e478046",
+      "size": 15122
+    },
+    {
+      "kind": "owned",
+      "path": "tools/weather_mcp_server.py",
+      "sha256": "806e6c5d63c6b3ed6e0308d714863dfe340098885f6c75ced9863de72a816659",
+      "size": 2185
+    },
+    {
+      "kind": "owned",
+      "path": "tools/web_tools.py",
+      "sha256": "2672c94dd09a1f00964843784784c2f7e9d52e718c50ca2876b31582f4eb2552",
+      "size": 23250
+    },
+    {
+      "kind": "owned",
+      "path": "tools/working_memory_tools.py",
+      "sha256": "1871d31ddc5c8ee6f4374984008a7293bb2aef7e4bc03cca545885224921a984",
+      "size": 62566
+    },
+    {
+      "kind": "owned",
+      "path": "tts_key_rotation.py",
+      "sha256": "2e83c75a4d68918ceff74eb26c9b9511b89c5b5ba34262dffd9a63fad6786396",
+      "size": 5275
+    },
+    {
+      "kind": "owned",
+      "path": "tts_text_policy.py",
+      "sha256": "62170db9629827c716afc2c64b103a792a7c6e957eec1be69a83e55992139a83",
+      "size": 3694
+    },
+    {
+      "kind": "owned",
+      "path": "twitter_activity_logger.py",
+      "sha256": "267f696c54ced39dda9415bc25bfef7b4c8b40ce1ff9498a6a543e826da1acee",
+      "size": 16667
+    },
+    {
+      "kind": "owned",
+      "path": "twitter_api.py",
+      "sha256": "cbe4c22c6dab5554102936ba439944c5952e0a1443bed233e4f8adb497170d3e",
+      "size": 9607
+    },
+    {
+      "kind": "owned",
+      "path": "twitter_browser.py",
+      "sha256": "288ede3db751f0c281004c39712dcf9587f72fe53dc89bc7c6aea80d3e262668",
+      "size": 22195
+    },
+    {
+      "kind": "owned",
+      "path": "twitter_manager.py",
+      "sha256": "d26ab5a6575903bf1e442c2e65af94f11bcb39f989ffd222286f58f9bd051b10",
+      "size": 30775
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/__init__.py",
+      "sha256": "fac2d112799b6c3cd68dae556490cf742e601e197548056970b31674b8920e80",
+      "size": 1097937
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/_common.py",
+      "sha256": "d8fdca49866c20c7e47babe6a549d593df9c084543dd54c1bbcf9a1999f37a43",
+      "size": 1757
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/_tailscale.py",
+      "sha256": "312042c98168474ee57005cc4010e11f3a1a1c94ad9edb44a0ed9ffd6763a486",
+      "size": 3857
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/atelier.py",
+      "sha256": "92a5eabda5da38659891581074e2f4c5dd25ad5ca1fbdc05ee8c0a74e90dab46",
+      "size": 44837
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/delegation.py",
+      "sha256": "98cff01fff726ce6cf016d0e925b8dde4061c1ae57d940a896d878a10ebe00d7",
+      "size": 36988
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/discord_line.py",
+      "sha256": "27f0535ce59d297ef7e0e972a9418e915d0c87ef8197038684c5b7de03bcb148",
+      "size": 15698
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/knowledge.py",
+      "sha256": "c869e6220cf220fb89fb08a6a5201a62952f5938a12b2c58b8b2190a0ac880a1",
+      "size": 9577
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/memory.py",
+      "sha256": "b7862e3140fd745bc26696a643da98efb81d3acf9ca7a937521f09853b7c5168",
+      "size": 123073
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/notes.py",
+      "sha256": "5e5f45d8847c854f0ed77e9ba1c25838b29ed94173efa5b8d6af0653fbac56c1",
+      "size": 46466
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/skill.py",
+      "sha256": "6b1e24e0c60848f42b5570a27bdf58f82504583915466238e334c4a654e82c96",
+      "size": 7381
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/styling.py",
+      "sha256": "1d59dcfada7288fbac146d54a24b104fbb653534dfb1aaec56f02419681d69e9",
+      "size": 32913
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/theme.py",
+      "sha256": "701ba427319dd05f623c575de19a86f6503b8e212f99219b24d697959e909d27",
+      "size": 20838
+    },
+    {
+      "kind": "owned",
+      "path": "ui_handlers/twitter.py",
+      "sha256": "f53133e867014d5883109e7bd0adf8701e7cda413a3c558d95604ab1b7a25bdd",
+      "size": 33378
+    },
+    {
+      "kind": "owned",
+      "path": "update.js",
+      "sha256": "6730913e961ce990e618cfc4108d3fb1e88f798cda61c3c3e601a65ea94744be",
+      "size": 717
+    },
+    {
+      "kind": "owned",
+      "path": "update_host/__init__.py",
+      "sha256": "e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5",
+      "size": 399
+    },
+    {
+      "kind": "owned",
+      "path": "update_host/contracts.py",
+      "sha256": "4018fe870273e8fa38b5e07b60bbb49d51edd2feaec38f22e087d528f3fa115f",
+      "size": 21874
+    },
+    {
+      "kind": "owned",
+      "path": "update_host/runtime.py",
+      "sha256": "38490c97b317a73ae029c7b6e9b8765625a8e9229388963130cf955334b303d3",
+      "size": 40528
+    },
+    {
+      "kind": "owned",
+      "path": "update_host/runtime_archive.py",
+      "sha256": "d4484f97a0d71531f9ac046b36d98bb47f092149335b559e36158a2493922b25",
+      "size": 23295
+    },
+    {
+      "kind": "owned",
+      "path": "update_host/supervisor.py",
+      "sha256": "66a7b8b231c8787f379d35ef3d5502021c136333b3849f5b99068e00e7bafbaa",
+      "size": 27965
+    },
+    {
+      "kind": "owned",
+      "path": "update_host/transaction.py",
+      "sha256": "14be150f67201224c0b6a63edcbdb13a42b11a1b64e932d812b4a138af3231ba",
+      "size": 33327
+    },
+    {
+      "kind": "owned",
+      "path": "update_host/trial.py",
+      "sha256": "a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326",
+      "size": 5351
+    },
+    {
+      "kind": "owned",
+      "path": "update_manager.py",
+      "sha256": "f69ee9998515dfff479bba9fbb56b93dbedf300c6fad2d656110cf101c74683a",
+      "size": 34455
+    },
+    {
+      "kind": "owned",
+      "path": "usage_ledger.py",
+      "sha256": "1991a2deb01a2a43581780250f92d0c749efe6ff64d0387e8eecd12444d409f1",
+      "size": 18590
+    },
+    {
+      "kind": "owned",
+      "path": "utils.py",
+      "sha256": "7462c42ff568c4401bda3f33a2b17d668288567d6c011c8bebd00554f38c9ff2",
+      "size": 129925
+    },
+    {
+      "kind": "owned",
+      "path": "uv.lock",
+      "sha256": "b9d7610f5fe03cb158b2b8044a79647a5f42f70df81108ab349103d143a0b7a9",
+      "size": 765461
+    },
+    {
+      "kind": "owned",
+      "path": "version.json",
+      "sha256": "2d584d793cc9e9c5a1e2b2df6666aecc323e8f702c1c82513f9de30cfd1c76be",
+      "size": 243
+    },
+    {
+      "kind": "owned",
+      "path": "version_manager.py",
+      "sha256": "d15b83ec54db8b0f2fb0ea782a922554c0130d72d2da004a2a0016a005010c9b",
+      "size": 4637
+    },
+    {
+      "kind": "owned",
+      "path": "visualize_graph.py",
+      "sha256": "306e4252f246f68b9e774d081b23d9e681cca9b81dc3fc778d5d7079cd48a907",
+      "size": 5108
+    },
+    {
+      "kind": "owned",
+      "path": "watchlist_manager.py",
+      "sha256": "b0a2a0ff10115a23b865c7dc7a54b73d363a19c72837d438c6a6d8cbf051f04d",
+      "size": 22187
+    },
+    {
+      "kind": "owned",
+      "path": "weather_service.py",
+      "sha256": "69476a5d30d3b3bf82d05aa6761226cd524121b35e019f3c299ebda1db4f4b2b",
+      "size": 13540
+    },
+    {
+      "kind": "owned",
+      "path": "world_builder.py",
+      "sha256": "d80f167c61c5e7452e72d4a1de9cd339803d8e0637101e91fed98c5b37d30907",
+      "size": 1947
+    }
+  ],
+  "file_count": 443,
+  "persistent_path_catalog": {
+    "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
+    "schema_version": 1
+  },
+  "release_version": "0.5.0.44",
+  "required_entries": [
+    "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
+    "cloud/lite-relay/README.md",
+    "cloud/lite-relay/migrations/0001_phase0_core.sql",
+    "cloud/lite-relay/migrations/0009_phase5_operations_standby.sql",
+    "cloud/lite-relay/migrations/0010_return_high_water_guards.sql",
+    "cloud/lite-relay/package-lock.json",
+    "cloud/lite-relay/package.json",
+    "cloud/lite-relay/public/index.html",
+    "cloud/lite-relay/public/service-worker.js",
+    "cloud/lite-relay/scripts/build-unified-lite.mjs",
+    "cloud/lite-relay/scripts/wrangler-secret-stdin-preload.cjs",
+    "cloud/lite-relay/src/index.ts",
+    "cloud/lite-relay/wrangler.phase2.example.jsonc",
+    "docs/user_guide/07a_lite_cloud_setup.md",
+    "lite_runtime.py",
+    "nexus_ark.py",
+    "pyproject.toml",
+    "runtime_tuf.py",
+    "site/guide/07a_lite_cloud_setup.html",
+    "uv.lock",
+    "version.json"
+  ],
+  "schema_version": 1,
+  "target": {
+    "cpu": "x86_64",
+    "platform": "windows"
+  },
+  "total_bytes": 22315700
+}
