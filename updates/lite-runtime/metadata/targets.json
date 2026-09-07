@@ -1,0 +1,35 @@
+{
+ "signatures": [
+  {
+   "keyid": "eb0c396d6f011da52a28cd5366f90b087f6afc1c758c7e493201c8ffc43a60d4",
+   "sig": "8533391c5523794c91f8e082b83276e8a98a465017263f2d191b0f9b91cb074a6d7c3a4f4cfeffcd9b39c4e900bc896fd593687bceb9175bad047bf402a22c0e"
+  }
+ ],
+ "signed": {
+  "_type": "targets",
+  "expires": "2027-08-09T14:34:27Z",
+  "spec_version": "1.0.31",
+  "targets": {
+   "LiteRuntime-win-x64-node-22.23.2+wrangler-4.118.0.tar.gz": {
+    "custom": {
+     "binding": {
+      "artifact_digest": "855ff79ff19c3113eb0ef6a1619db08a51484781d7d063b036df4a3cbca244f1",
+      "id": "lite-wrangler",
+      "manifest_digest": "eea365c650b613083dcc626e591296f05036596dbc9d6c199c2047f08b20aa0b",
+      "node_version": "22.23.2",
+      "present": true,
+      "target_name": "LiteRuntime-win-x64-node-22.23.2+wrangler-4.118.0.tar.gz",
+      "version": "node-22.23.2_wrangler-4.118.0",
+      "wrangler_version": "4.118.0"
+     },
+     "component": "lite-runtime"
+    },
+    "hashes": {
+     "sha256": "1fddd96b7c45de4c6d3afc3d03c175ae7a6011f6d2be1434bb9a3e6bd5477876"
+    },
+    "length": 92250393
+   }
+  },
+  "version": 1
+ }
+}

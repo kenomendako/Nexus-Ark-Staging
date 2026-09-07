@@ -1,0 +1,8 @@
+event: response.created
+data: {"type":"response.created","response":{"model":"model-phase0"}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","delta":"PHASE0_OK"}
+
+event: response.completed
+data: {"type":"response.completed","response":{"model":"model-phase0","usage":{"input_tokens":14,"output_tokens":4,"input_tokens_details":{"cached_tokens":10},"output_tokens_details":{"reasoning_tokens":0}}}}
