@@ -1,0 +1,5 @@
+data: {"model":"model-phase0","choices":[{"delta":{"content":"PHASE0_"},"finish_reason":null}],"usage":{"prompt_tokens":10,"completion_tokens":1,"prompt_tokens_details":{"cached_tokens":6},"cost_in_usd_ticks":100000}}
+
+data: {"model":"model-phase0","choices":[{"delta":{"content":"OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"prompt_tokens_details":{"cached_tokens":6},"cost_in_usd_ticks":136000}}
+
+data: [DONE]
