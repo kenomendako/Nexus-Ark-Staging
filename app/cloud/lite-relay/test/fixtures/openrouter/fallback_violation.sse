@@ -1,0 +1,3 @@
+data: {"model":"resolved/model-phase0","choices":[{"delta":{"content":"PHASE0_OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":16,"completion_tokens":4,"cost":0.00012},"openrouter_metadata":{"requested":"requested/model-phase0","strategy":"fallback","attempt":2,"attempts":[{"provider":"First","status":503},{"provider":"Second","status":200}],"endpoints":{"available":[{"provider":"Second","model":"resolved/model-phase0","selected":true}]}}}
+
+data: [DONE]

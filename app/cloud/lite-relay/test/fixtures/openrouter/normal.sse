@@ -1,0 +1,3 @@
+data: {"model":"resolved/model-phase0","choices":[{"delta":{"content":"PHASE0_OK"},"finish_reason":"stop"}],"usage":{"prompt_tokens":16,"completion_tokens":4,"prompt_tokens_details":{"cached_tokens":11,"cache_write_tokens":2},"completion_tokens_details":{"reasoning_tokens":0},"cost":0.00012},"openrouter_metadata":{"requested":"requested/model-phase0","attempt":1,"endpoints":{"available":[{"provider":"SyntheticUpstream","model":"resolved/model-phase0","selected":true}]}}}
+
+data: [DONE]
