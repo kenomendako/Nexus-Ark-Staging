@@ -1,13 +1,13 @@
-const CACHE_NAME = "nexus-ark-lite-travel-phase5-v24";
+const CACHE_NAME = "nexus-ark-lite-travel-phase5-v25";
 const ASSETS = [
   "/",
   "/",
   "/manifest.webmanifest",
-  "/static/styles.css?v=87",
-  "/static/app.js?v=87",
-  "/static/pairing-handoff.js?v=87",
-  "/static/lite-continuity-state.js?v=87",
-  "/static/travel-adapter.js?v=87",
+  "/static/styles.css?v=88",
+  "/static/app.js?v=88",
+  "/static/pairing-handoff.js?v=88",
+  "/static/lite-continuity-state.js?v=88",
+  "/static/travel-adapter.js?v=88",
   "/icon.png",
   "/icon-maskable.png",
   "/badge.png"

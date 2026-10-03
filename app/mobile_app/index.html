@@ -131,6 +131,11 @@
           </div>
         </details>
         <div class="notice-panel" id="secure-origin-notice" hidden></div>
+        <section class="notice-panel" id="travel-send-failure" role="status" hidden>
+          <strong>前回の送信でエラーが発生しました</strong>
+          <p id="travel-send-failure-detail"></p>
+          <p class="management-meta">この文章は自動で再送しません。確認コードを添えて状況を伝えられます。</p>
+        </section>
         <section class="travel-pending-panel" id="travel-pending-panel" aria-labelledby="travel-pending-title" hidden>
           <strong id="travel-pending-title">前回の送信を確認</strong>
           <p id="travel-pending-status" role="status"></p>
@@ -550,6 +555,6 @@
       <button class="icon-button close-dialog-button" id="close-image-dialog" type="button" aria-label="閉じる">×</button>
       <img id="image-dialog-img" alt="拡大画像">
     </dialog>
-    <script src="/lite/static/app.js?v=87" type="module"></script>
+    <script src="/lite/static/app.js?v=88" type="module"></script>
   </body>
 </html>

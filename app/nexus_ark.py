@@ -12403,7 +12403,8 @@ try:
         lite_cloud_setup_publish_event = _start_lite_busy_button(
             lite_cloud_setup_publish_button,
             "Lite用クラウドを公開中…",
-        ).then(
+        )
+        lite_cloud_setup_publish_result_event = lite_cloud_setup_publish_event.then(
             fn=ui_handlers.handle_lite_cloud_setup_publish,
             inputs=[lite_cloud_setup_state, lite_cloud_setup_publish_confirm],
             outputs=_lite_cloud_setup_outputs,
@@ -12412,8 +12413,26 @@ try:
             concurrency_id="lite-cloud-setup-mutation",
             show_progress="hidden",
         )
+        lite_cloud_setup_publish_sync_event = lite_cloud_setup_publish_result_event.then(
+            fn=ui_handlers.handle_lite_cloud_setup_sync_saved_connection_fields,
+            inputs=[
+                lite_cloud_setup_state,
+                lite_travel_worker_url,
+                lite_travel_owner_token,
+                lite_travel_signing_key,
+                lite_travel_wrangler_config_path,
+            ],
+            outputs=[
+                lite_travel_worker_url,
+                lite_travel_owner_token,
+                lite_travel_signing_key,
+                lite_travel_wrangler_config_path,
+            ],
+            queue=False,
+            show_progress="hidden",
+        )
         _restore_lite_busy_button(
-            lite_cloud_setup_publish_event,
+            lite_cloud_setup_publish_sync_event,
             lite_cloud_setup_publish_button,
             "Lite用クラウドを公開して接続を確認",
         )

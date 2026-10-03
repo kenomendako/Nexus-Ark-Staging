@@ -1,13 +1,13 @@
-const CACHE_NAME = "nexus-ark-lite-v87";
+const CACHE_NAME = "nexus-ark-lite-v88";
 const ASSETS = [
   "/lite",
   "/lite/",
   "/lite/manifest.webmanifest",
-  "/lite/static/styles.css?v=87",
-  "/lite/static/app.js?v=87",
-  "/lite/static/pairing-handoff.js?v=87",
-  "/lite/static/lite-continuity-state.js?v=87",
-  "/lite/static/travel-adapter.js?v=87",
+  "/lite/static/styles.css?v=88",
+  "/lite/static/app.js?v=88",
+  "/lite/static/pairing-handoff.js?v=88",
+  "/lite/static/lite-continuity-state.js?v=88",
+  "/lite/static/travel-adapter.js?v=88",
   "/lite/icon.png",
   "/lite/icon-maskable.png",
   "/lite/badge.png"

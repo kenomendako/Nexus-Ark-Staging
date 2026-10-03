@@ -1,8 +1,8 @@
-import { travelAdapter } from "./travel-adapter.js?v=87";
-import { parsePairingHandoff } from "./pairing-handoff.js?v=87";
-import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=87";
+import { travelAdapter } from "./travel-adapter.js?v=88";
+import { parsePairingHandoff } from "./pairing-handoff.js?v=88";
+import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=88";
 
-const LITE_UI_BUILD = "v87";
+const LITE_UI_BUILD = "v88";
 
 function isCloudHostedLite() {
   return true;
@@ -115,6 +115,8 @@ const els = {
   standbyShortcutButton: document.querySelector("#standby-shortcut-button"),
   snapshotFreshness: document.querySelector("#snapshot-freshness"),
   travelReadiness: document.querySelector("#travel-readiness"),
+  travelSendFailure: document.querySelector("#travel-send-failure"),
+  travelSendFailureDetail: document.querySelector("#travel-send-failure-detail"),
   travelPendingPanel: document.querySelector("#travel-pending-panel"),
   travelPendingStatus: document.querySelector("#travel-pending-status"),
   travelPendingContext: document.querySelector("#travel-pending-context"),
@@ -499,6 +501,14 @@ function renderConnectivityCompact() {
     text = "このスマホを接続してください";
     icon = "!";
     mode = "warn";
+  } else if (!checking && standby.code === "returning") {
+    text = "帰宅処理を再開してください";
+    icon = "!";
+    mode = "warn";
+  } else if (!checking && standby.code === "in_use") {
+    text = state.mode === "travel" ? "独立モード使用中です" : "出発済みです。独立モードを開いてください";
+    icon = state.mode === "travel" ? "✓" : "!";
+    mode = state.mode === "travel" ? "ok" : "warn";
   } else if (!checking && standby.code !== "ready") {
     text = "お出かけ前のデータ準備が必要です";
     icon = "!";
@@ -587,6 +597,8 @@ function applyTravelSessionControls() {
     : "現在の状態をお出かけ前データとして保存します。";
   els.homeModeButton.textContent = view.homeLabel;
   els.homeModeButton.disabled = view.homeDisabled;
+  els.travelModeButton.textContent = view.status === "active" && state.mode === "home"
+    ? "独立モードを開く" : "独立モード";
   els.travelModeButton.disabled = view.travelDisabled;
   els.returnHomeButton.hidden = true;
 }
@@ -723,6 +735,10 @@ function renderConnectivityNextAction() {
       : "実際に持ち出すこの画面で端末をペアリングしてください。";
     label = device.code === "re_pair_required" ? "再ペアリングする" : "ペアリングする";
     action = "pair";
+  } else if (standby.code === "in_use" && state.mode === "home") {
+    text = "PCで出発済みです。独立モードを開くと、使用中のお出かけデータで会話できます。出発をやり直す必要はありません。";
+    label = "独立モードを開く";
+    action = "travel";
   } else if (["in_use", "returning"].includes(standby.code)) {
     text = standby.code === "returning"
       ? "署名付き帰宅が途中です。完了すると、お出かけ前のデータを更新できます。"
@@ -1439,6 +1455,18 @@ function setLiteMode(mode) {
   els.imageInput.disabled = state.mode === "travel";
   els.itemButton.disabled = state.mode === "travel";
   els.voiceButton.disabled = state.mode === "travel";
+  renderConnectivityNextAction();
+  renderConnectivityCompact();
+  renderTravelSendFailure();
+}
+
+function renderTravelSendFailure() {
+  const failure = state.mode === "travel"
+    ? travelAdapter.lastSendFailure(state.travelSession, state.travelPersonaId) : null;
+  els.travelSendFailure.hidden = !failure;
+  els.travelSendFailureDetail.textContent = failure
+    ? `${failure.message}（確認コード: ${failure.code}${failure.httpStatus ? ` / HTTP ${failure.httpStatus}` : ""}）`
+    : "";
 }
 
 function travelPersonas() {
@@ -1611,6 +1639,7 @@ async function loadTravelRouteControls() {
 async function refreshTravelPersonaView() {
   state.travelBudgetStopped = false;
   state.travelRouteUsable = true;
+  renderTravelSendFailure();
   await Promise.all([
     loadTravelRouteControls(),
     loadTravelUsage(),
@@ -2150,6 +2179,9 @@ async function enterTravelMode() {
     session = await travelAdapter.currentSession();
   }
   if (!session) throw new Error("独立モードsessionを取得できません。");
+  if (session.status === "returning" || state.returningHome) {
+    throw new Error("帰宅処理中です。独立モードでの会話を再開せず、帰宅を完了してください。");
+  }
   state.travelSession = session;
   state.currentTravelSession = session;
   setExternalAiExportSource({ kind: "session", value: session });
@@ -2429,6 +2461,9 @@ async function sendTravelMessage(message) {
     await loadTravelUsage();
   } else {
     await refreshTravelPendingRecovery().catch(() => {});
+    if (result.error) {
+      throw new Error(`${result.error.message}（確認コード: ${result.error.code}${result.error.httpStatus ? ` / HTTP ${result.error.httpStatus}` : ""}）`);
+    }
     throw new Error("送信結果が未確定です。別モードへ自動再送しません。「前回の送信を確認」欄で状態を確認してください。");
   }
 }
@@ -4064,6 +4099,7 @@ async function sendMessage(event) {
     } finally {
       state.sending = false;
       setTravelRouteControls();
+      renderTravelSendFailure();
     }
     return;
   }

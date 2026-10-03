@@ -15273,6 +15273,87 @@ def _lite_cloud_setup_persist_connection(wrangler_config_path=""):
     return persist
 
 
+_LITE_CLOUD_SETUP_DEFAULT_WRANGLER_CONFIG_PATH = "cloud/lite-relay/wrangler.phase2.jsonc"
+
+
+def _lite_cloud_setup_normalize_connection_url(value):
+    """接続先比較用に、秘密値を含まないWorker URLだけを正規化する。"""
+
+    candidate = str(value or "").strip()
+    parsed = urlsplit(candidate)
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.username
+        or parsed.password
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        return ""
+    return candidate.rstrip("/")
+
+
+def _lite_cloud_setup_normalize_config_path(value):
+    """初回準備の実運用設定パスを比較用に正規化する。"""
+
+    candidate = str(value or "").strip().replace("\\", "/")
+    relative = Path(candidate)
+    if (
+        not candidate.startswith("cloud/lite-relay/")
+        or relative.is_absolute()
+        or ".." in relative.parts
+        or relative.suffix not in {".json", ".jsonc"}
+        or ".example." in relative.name
+    ):
+        return ""
+    return candidate
+
+
+def _lite_cloud_setup_connection_conflicts_with_operation(settings, operation):
+    """既存の別接続や手動設定を、古いoperationで上書きしないためのguard。"""
+
+    current = settings if isinstance(settings, dict) else {}
+    current_url_raw = str(current.get("worker_url") or "").strip()
+    current_path_raw = str(current.get("wrangler_config_path") or "").strip()
+    operation_url = _lite_cloud_setup_normalize_connection_url(operation.get("worker_url"))
+    operation_path = _lite_cloud_setup_normalize_config_path(operation.get("config_path"))
+    current_url = _lite_cloud_setup_normalize_connection_url(current_url_raw)
+    current_path = _lite_cloud_setup_normalize_config_path(current_path_raw)
+
+    if current_url_raw and current_url != operation_url:
+        return True
+    if current_path_raw and current_path != _LITE_CLOUD_SETUP_DEFAULT_WRANGLER_CONFIG_PATH:
+        if current_path != operation_path:
+            return True
+    return False
+
+
+def _lite_cloud_setup_ui_connection_conflicts(current_values, saved_values):
+    """未保存の手動入力を、成功した初回準備のUI同期で巻き戻さない。"""
+
+    current_url, current_owner, current_signing, current_path = current_values
+    saved_url, saved_owner, saved_signing, saved_path = saved_values
+    current_url_raw = str(current_url or "").strip()
+    current_path_raw = str(current_path or "").strip().replace("\\", "/")
+    normalized_current_url = _lite_cloud_setup_normalize_connection_url(current_url_raw)
+    normalized_current_path = _lite_cloud_setup_normalize_config_path(current_path_raw)
+    if current_url_raw and normalized_current_url != saved_url:
+        return True
+    if str(current_owner or "").strip() and str(current_owner).strip() != saved_owner:
+        return True
+    if str(current_signing or "").strip() and str(current_signing).strip() != saved_signing:
+        return True
+    if current_path_raw and normalized_current_path != _LITE_CLOUD_SETUP_DEFAULT_WRANGLER_CONFIG_PATH:
+        if normalized_current_path != saved_path:
+            return True
+    return False
+
+
+def _lite_cloud_setup_preserve_connection_fields():
+    return (gr.update(), gr.update(), gr.update(), gr.update())
+
+
 def _lite_cloud_setup_bootstrap_secrets(operation):
     """再開時は保存済み接続キーを再利用し、公開照合不能な再生成を防ぐ。"""
 
@@ -15533,9 +15614,24 @@ def handle_lite_cloud_setup_publish(previous_state, confirmed, progress=None):
             return _lite_cloud_setup_worker_url_recovery_updates(operation)
 
         def postflight():
+            operation_url_raw = str(operation.get("worker_url") or "").strip()
+            operation_url = _lite_cloud_setup_normalize_connection_url(operation_url_raw)
+            operation_path_raw = str(operation.get("config_path") or "").strip()
+            if operation_url_raw and not operation_url:
+                return {"state": "connection_save_failed", "public_ready": False, "owner_ready": False}
+            operation_for_guard = {
+                "worker_url": operation_url,
+                "config_path": operation_path_raw,
+            }
+            current_settings = lite_travel.get_settings() or {}
+            if _lite_cloud_setup_connection_conflicts_with_operation(
+                current_settings,
+                operation_for_guard,
+            ):
+                return {"state": "connection_mismatch", "public_ready": False, "owner_ready": False}
             updates = {
-                "worker_url": str(operation.get("worker_url") or "").strip().rstrip("/"),
-                "wrangler_config_path": str(operation.get("config_path") or "").strip(),
+                "worker_url": operation_url,
+                "wrangler_config_path": operation_path_raw,
             }
             if not config_manager.update_nested_config_keys(
                 "lite_travel_settings",
@@ -15577,6 +15673,66 @@ def handle_lite_cloud_setup_publish(previous_state, confirmed, progress=None):
         "✅ Lite用クラウドを公開し、このPCとの接続を確認しました。  \n"
         "次は下の「2. AIサービスとモデルを選ぶ」へ進み、保存後に「接続確認とスマホ登録」を開いてください。",
         "公開とこのPCとの接続確認が完了しました。",
+    )
+
+
+def handle_lite_cloud_setup_sync_saved_connection_fields(
+    previous_state,
+    current_worker_url,
+    current_owner_token,
+    current_signing_key,
+    current_wrangler_config_path,
+):
+    """公開成功後だけ、保存済みの接続4項目を同じUIセッションへ反映する。"""
+
+    state = previous_state if isinstance(previous_state, dict) else {}
+    if str(state.get("state") or "") != "verified":
+        return _lite_cloud_setup_preserve_connection_fields()
+
+    operation_url = _lite_cloud_setup_normalize_connection_url(state.get("worker_url"))
+    operation_path = _lite_cloud_setup_normalize_config_path(state.get("config_path"))
+    if not operation_url or not operation_path:
+        return _lite_cloud_setup_preserve_connection_fields()
+
+    try:
+        saved = lite_travel.get_settings() or {}
+    except Exception:
+        return _lite_cloud_setup_preserve_connection_fields()
+    if not isinstance(saved, dict):
+        return _lite_cloud_setup_preserve_connection_fields()
+
+    saved_url = _lite_cloud_setup_normalize_connection_url(saved.get("worker_url"))
+    saved_owner = str(saved.get("owner_token") or "").strip()
+    saved_signing = str(saved.get("bundle_signing_key") or "").strip()
+    saved_path = _lite_cloud_setup_normalize_config_path(saved.get("wrangler_config_path"))
+    if (
+        not saved_url
+        or not saved_owner
+        or not saved_signing
+        or len(saved_owner) < 16
+        or len(saved_signing) < 16
+        or saved_owner == saved_signing
+        or not saved_path
+        or saved_url != operation_url
+        or saved_path != operation_path
+    ):
+        return _lite_cloud_setup_preserve_connection_fields()
+
+    saved_values = (saved_url, saved_owner, saved_signing, saved_path)
+    current_values = (
+        current_worker_url,
+        current_owner_token,
+        current_signing_key,
+        current_wrangler_config_path,
+    )
+    if _lite_cloud_setup_ui_connection_conflicts(current_values, saved_values):
+        return _lite_cloud_setup_preserve_connection_fields()
+
+    return (
+        gr.update(value=saved_url),
+        gr.update(value=saved_owner),
+        gr.update(value=saved_signing),
+        gr.update(value=saved_path),
     )
 
 

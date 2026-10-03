@@ -46,7 +46,7 @@ await copyFile(path.join(sourceRoot, "static/travel-adapter.js"), path.join(stat
 await writeFile(
   path.join(publicRoot, "service-worker.js"),
   replaceLiteScope(await readFile(path.join(sourceRoot, "service-worker.js"), "utf8"))
-    .replace(/nexus-ark-lite-v\d+/, "nexus-ark-lite-travel-phase5-v24"),
+    .replace(/nexus-ark-lite-v\d+/, "nexus-ark-lite-travel-phase5-v25"),
   "utf8",
 );
 await writeFile(

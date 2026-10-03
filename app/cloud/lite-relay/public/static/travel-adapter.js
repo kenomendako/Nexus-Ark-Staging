@@ -8,6 +8,7 @@ const KEYS = {
   draft: "nexusLite.travel.draft",
   pending: "nexusLite.travel.pendingMessage",
   pendingArchive: "nexusLite.travel.pendingArchive",
+  lastSendFailure: "nexusLite.travel.lastSendFailure",
 };
 const SUPPORTED_API_SCHEMA_VERSION = 10;
 const REQUIRED_D1_SCHEMA_VERSION = 10;
@@ -40,6 +41,65 @@ export class TravelAdapterError extends Error {
     this.name = "TravelAdapterError";
     this.code = code;
     this.status = status;
+  }
+}
+
+// Workerが正規化した分類だけを表示・保存する。本文や上流のエラー文は取り込まない。
+const SEND_FAILURE_MESSAGES = {
+  provider_auth_failed: "AIサービスの認証を確認できませんでした。PC本体のLite用APIキー設定を確認してください。",
+  provider_rate_limited: "AIサービスの利用上限に達しました。時間を置いてから状態を確認してください。",
+  provider_model_unavailable: "AIサービスで選択したモデルを利用できません。チャットの「今回使うAI」でモデル設定を確認してください。",
+  provider_rejected_request: "AIサービスが送信内容またはお出かけ設定を受け付けませんでした。",
+  provider_unavailable: "AIサービスが一時的に利用できません。時間を置いてから状態を確認してください。",
+  provider_error: "AIサービスで応答を完了できませんでした。",
+  budget_limit_exceeded: "設定した概算予算を超えるため、AIサービスへ送信しませんでした。",
+  persona_budget_limit_exceeded: "このペルソナの概算予算を超えるため、AIサービスへ送信しませんでした。",
+  budget_unknown_price_blocked: "選択したモデルの料金を確認できないため、AIサービスへ送信しませんでした。",
+  stream_interrupted: "応答が途中で切断されたか、時間内に完了しませんでした。送信結果を確認してください。",
+  output_limit: "回答が最大長に達し、完了した会話として保存されませんでした。",
+  persistence_failed: "応答の保存完了を確認できません。送信結果を確認してください。",
+  worker_unreachable: "Lite用クラウドへ接続できません。送信結果を確認してください。",
+  provider_outcome_unknown: "AIサービスの送信結果を確認できません。前回の送信を確認してください。",
+  secret_binding_unavailable: "Lite用APIキーをクラウドで確認できません。PC本体のLite用APIキー設定を確認してください。",
+  provider_profile_unavailable: "Lite用AIサービスの接続設定を確認できません。",
+  provider_profile_disabled: "選択中のLite用AIサービスが利用停止中です。",
+  credential_profile_unavailable: "選択中のLite用AIサービスの接続設定を確認できないか、利用停止中です。",
+  signing_key_unavailable: "Lite用クラウドで署名設定を確認できません。PC本体のクラウド準備状態を確認してください。",
+  travel_session_not_active: "このお出かけは会話できる状態ではありません。PC本体のお出かけ状態を確認してください。",
+  route_changed_before_provider_start: "AIサービスの接続設定が変わったため、送信を停止しました。",
+  session_message_in_progress: "このお出かけには処理中の送信があります。前回の送信結果を確認してください。",
+  message_already_reserved: "この送信の処理はすでに開始されています。前回の送信結果を確認してください。",
+  travel_send_failed: "Liteの送信が完了しませんでした。送信結果と接続状態を確認してください。",
+};
+
+function sendFailure(code, status = 0) {
+  const safeCode = typeof code === "string" && Object.hasOwn(SEND_FAILURE_MESSAGES, code) ? code : "travel_send_failed";
+  return {
+    code: safeCode,
+    httpStatus: Number.isInteger(status) && status >= 100 && status <= 599 ? status : 0,
+    message: SEND_FAILURE_MESSAGES[safeCode],
+  };
+}
+
+function rememberSendFailure(pending, failure) {
+  try {
+    localStorage.setItem(KEYS.lastSendFailure, JSON.stringify({
+      worker_url: pending.worker_url, session_id: pending.session_id, persona_id: pending.persona_id,
+      client_message_id: pending.client_message_id, code: failure.code, http_status: failure.httpStatus,
+    }));
+  } catch {
+    // 保存領域の障害が送信記録や、今回のエラー表示を妨げないようにする。
+  }
+}
+
+function lastSendFailure(session, personaId) {
+  try {
+    const failure = JSON.parse(localStorage.getItem(KEYS.lastSendFailure) || "null");
+    if (!failure || !session?.travel_session_id || !personaId || failure.worker_url !== base()
+      || failure.session_id !== session.travel_session_id || failure.persona_id !== personaId) return null;
+    return sendFailure(failure.code, failure.http_status);
+  } catch {
+    return null;
   }
 }
 
@@ -296,17 +356,32 @@ async function jsonRequest(path, options = {}, classifyUnauthorized = true) {
 function parseSse(text) {
   let answer = "";
   let terminal = "";
+  let error = null;
   for (const line of text.split(/\r?\n/)) {
     if (!line.startsWith("data:")) continue;
     try {
       const event = JSON.parse(line.slice(5).trim());
       if (event.type === "response.text.delta") answer += event.text || "";
       if (["response.committed", "response.partial", "response.error"].includes(event.type)) terminal = event.type;
+      if (event.type === "response.error") {
+        const codes = {
+          auth: "provider_auth_failed", rate_limit: "provider_rate_limited",
+          invalid_request: "provider_rejected_request", model_unavailable: "provider_model_unavailable",
+          provider_error: "provider_error", stream_interrupted: "stream_interrupted",
+          output_limit: "output_limit", persistence_failed: "persistence_failed",
+        };
+        error = sendFailure(Object.hasOwn(codes, event.error?.category) ? codes[event.error.category] : "travel_send_failed", event.error?.http_status);
+      } else if (event.type === "response.partial") {
+        error = sendFailure(event.reason === "max_output_tokens" ? "output_limit" : "stream_interrupted");
+      } else if (event.type === "response.committed") {
+        error = null;
+      }
     } catch {
       // 未知イベントは表示せず、確定照会可能なpendingを維持する。
     }
   }
-  return { answer, terminal };
+  if (!terminal) error = sendFailure("stream_interrupted");
+  return { answer, terminal, ...(error ? { error } : {}) };
 }
 
 export const travelAdapter = {
@@ -325,9 +400,11 @@ export const travelAdapter = {
   configuredBase: base,
   inspectPending: inspectPendingMessage,
   listPendingArchive,
+  lastSendFailure,
   archivePending: (raw, options) => withPendingGuard(() => archivePendingInternal(raw, options)),
   paired: () => Boolean(accessToken()),
   errorCode: (error) => error instanceof TravelAdapterError ? error.code : "",
+  httpStatus: (error) => error instanceof TravelAdapterError ? error.status : 0,
   async health() {
     if (!base()) return { ok: false, error: "worker_url_missing" };
     let response;
@@ -502,19 +579,46 @@ export const travelAdapter = {
       };
       const pendingRaw = JSON.stringify(pending);
       localStorage.setItem(KEYS.pending, pendingRaw);
-      const response = await request("/v1/travel-sessions/" + encodeURIComponent(session.travel_session_id) + "/messages", {
-        method: "POST",
-        body: JSON.stringify({ client_message_id: clientMessageId, persona_id: personaId, message }),
-      });
+      let response;
+      try {
+        response = await request("/v1/travel-sessions/" + encodeURIComponent(session.travel_session_id) + "/messages", {
+          method: "POST",
+          body: JSON.stringify({ client_message_id: clientMessageId, persona_id: personaId, message }),
+        });
+      } catch (error) {
+        assertConnection(context);
+        assertPendingRaw(pendingRaw);
+        if (error instanceof TravelAdapterError && error.code === "worker_unreachable") {
+          rememberSendFailure(pending, sendFailure("worker_unreachable"));
+        }
+        throw error;
+      }
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || "Worker " + response.status);
-      }
-      const result = parseSse(await response.text());
-      assertConnection(context);
-      if (result.terminal === "response.committed") {
+        assertConnection(context);
         assertPendingRaw(pendingRaw);
+        const failure = sendFailure(body?.error, response.status);
+        rememberSendFailure(pending, failure);
+        throw new TravelAdapterError(failure.message, failure.code, failure.httpStatus);
+      }
+      let streamText;
+      try {
+        streamText = await response.text();
+      } catch {
+        assertConnection(context);
+        assertPendingRaw(pendingRaw);
+        const failure = sendFailure("stream_interrupted");
+        rememberSendFailure(pending, failure);
+        throw new TravelAdapterError(failure.message, failure.code);
+      }
+      const result = parseSse(streamText);
+      assertConnection(context);
+      assertPendingRaw(pendingRaw);
+      if (result.terminal === "response.committed") {
         localStorage.removeItem(KEYS.pending);
+        if (lastSendFailure(session, personaId)) localStorage.removeItem(KEYS.lastSendFailure);
+      } else if (result.error) {
+        rememberSendFailure(pending, result.error);
       }
       return result;
     });

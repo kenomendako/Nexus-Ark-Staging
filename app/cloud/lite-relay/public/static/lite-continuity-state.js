@@ -8,7 +8,7 @@ export function liteContinuityState(status, mode = "home", returningHome = false
     blocksStandby,
     homeLabel: returning ? "帰宅を再開" : inUse ? "署名付き帰宅" : "本体",
     homeDisabled: returningHome || (!blocksStandby && mode === "home"),
-    travelDisabled: blocksStandby || mode === "travel",
+    travelDisabled: returningHome || returning || mode === "travel",
     freshnessText: returning
       ? "お出かけ前データ 帰宅処理中・完了後に更新"
       : inUse ? "お出かけ前データ 使用中・帰宅後に更新" : "",
