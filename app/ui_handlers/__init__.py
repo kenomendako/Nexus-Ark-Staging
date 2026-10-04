@@ -16696,14 +16696,15 @@ def _lite_retention_prompt_update(metadata: dict[str, Any]):
 
 
 def _lite_worker_update_guide_update(metadata: dict[str, Any]):
-    """Worker／D1更新が必要な時だけ、診断直下の更新手順を表示する。"""
-    update_required = str(metadata.get("worker_state") or "") in {
+    """互換版でもPWA更新を開けるようにし、版不足時だけ手順を展開する。"""
+    worker_state = str(metadata.get("worker_state") or "")
+    update_required = worker_state in {
         "worker_update_required",
         "migration_required",
     }
     outing_active = str(metadata.get("presence_state") or "") in {"armed", "active", "returning"}
-    visible = update_required and not outing_active
-    return gr.update(visible=visible)
+    visible = (update_required or worker_state in {"ready", "maintenance_overdue"}) and not outing_active
+    return gr.update(visible=visible, open=visible and update_required)
 
 
 def _lite_update_database_name_update() -> Any:

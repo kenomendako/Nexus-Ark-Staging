@@ -2,12 +2,12 @@
  "signatures": [
   {
    "keyid": "eb0c396d6f011da52a28cd5366f90b087f6afc1c758c7e493201c8ffc43a60d4",
-   "sig": "adcaa103bbfa2121a462f91b4408cbf93b2d6f2e0ade6d3d9bf221f4dfa5988963bbb3edb51f6e56ac7ee672795adca7883401375ea2f48cf600f2fec0925d01"
+   "sig": "37e23463ecb78d320dd87e9946c042563f1c1b47a2cc3a885bc827c8b2085b703589e16eb9dd2164f5ee3e037ed9a4cb96fc43cc6ba0608c15e52f3fd4a2a702"
   }
  ],
  "signed": {
   "_type": "targets",
-  "expires": "2027-09-28T14:21:57Z",
+  "expires": "2027-10-04T12:50:56Z",
   "spec_version": "1.0.31",
   "targets": {
    "Nexus-Ark-0.2.4.2.tar.gz": {
@@ -1006,6 +1006,30 @@
     },
     "length": 14502609
    },
+   "Nexus-Ark-0.5.0.56.tar.gz": {
+    "custom": {
+     "tufup": {
+      "required": false
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "0cb2601d7a9ff079af39e2470bf93512c090aaee8d90e9db31ca31fd8517863a"
+    },
+    "length": 14573225
+   },
+   "Nexus-Ark-0.5.0.57.tar.gz": {
+    "custom": {
+     "tufup": {
+      "required": false
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "d6887b183d6f8d26eb41ed5dfd053c7660f04cbe50ef07f4c49dd876ee1db846"
+    },
+    "length": 14583798
+   },
    "Nexus-Ark-0.5.0.6.tar.gz": {
     "custom": {
      "tufup": {
@@ -1055,6 +1079,6 @@
     "length": 14115222
    }
   },
-  "version": 139
+  "version": 141
  }
 }

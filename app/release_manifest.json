@@ -1,7 +1,7 @@
 {
   "components": {
     "app": {
-      "version": "0.5.0.56"
+      "version": "0.5.0.57"
     },
     "python_env": {
       "declared_min_python_version": "3.10",
@@ -37,8 +37,8 @@
     {
       "kind": "owned",
       "path": "RELEASE_NOTES.md",
-      "sha256": "127544b6552b2c859abc03a8a09db1f1b7bbd4c7603195d7779ff5ab41957837",
-      "size": 48638
+      "sha256": "2e996b2a21a7b7771fc4a629ebe8c61719d58e7f537f9e9354360fe7a19f782b",
+      "size": 50861
     },
     {
       "kind": "owned",
@@ -523,8 +523,8 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
-      "sha256": "0d48f4a7f50bd16de16f3fc355e19667bc9cc2241bb4c5fdba060152a322aa6b",
-      "size": 18817
+      "sha256": "596491214e0a19c6af7edbdea53400e941ff6cb148b4eb83a3f57a55ab10fbb2",
+      "size": 19278
     },
     {
       "kind": "owned",
@@ -577,19 +577,19 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.faiss",
-      "sha256": "b2a23829344422e1d740cd07bd25b07c648d49d63ba4e954c23f55cd2642215e",
-      "size": 3330093
+      "sha256": "97efba903ee3c769d8cd0e0e2c816ffc49d5ee12268c1e0e2c4fa8d38bf7d005",
+      "size": 3342381
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.pkl",
-      "sha256": "f1886ff52f017b563e5d4f2cf71793f9f3943b45a6ecdec85c60cfb511ffb9bc",
-      "size": 187575
+      "sha256": "c2d961bdedf8cf3e62d1a91c5376fc2a72460ef3cf00fb341bb72fc686eea0d7",
+      "size": 188578
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/model_info.json",
-      "sha256": "31d2fc36fb2d75d4f8d9695b8a16355738317d1de841737f6eae5fa30a0454b1",
+      "sha256": "694e58f866dcaafb54dde231eae990e3ce86091eb26d869f7b47c3b8ff940471",
       "size": 175
     },
     {
@@ -1549,8 +1549,8 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/07a_lite_cloud_setup.md",
-      "sha256": "0d48f4a7f50bd16de16f3fc355e19667bc9cc2241bb4c5fdba060152a322aa6b",
-      "size": 18817
+      "sha256": "596491214e0a19c6af7edbdea53400e941ff6cb148b4eb83a3f57a55ab10fbb2",
+      "size": 19278
     },
     {
       "kind": "owned",
@@ -1855,8 +1855,8 @@
     {
       "kind": "owned",
       "path": "nexus_ark.py",
-      "sha256": "46a9bcc291b4986a2a422e2b2ac8f56b07193a3318d2c62a4c535894af9bb470",
-      "size": 903405
+      "sha256": "4092e8824184586794c4e22c5b1163d3331f2002cdb4ff71a0a3280cba8cc36d",
+      "size": 903658
     },
     {
       "kind": "owned",
@@ -2119,8 +2119,8 @@
     {
       "kind": "owned",
       "path": "site/guide/07a_lite_cloud_setup.html",
-      "sha256": "cb17311f7a8591033568d34dc73a5a52d8462b64299cf55a63b0c2f8c010c136",
-      "size": 22817
+      "sha256": "d86d31db89189593fad9b3c77d9fb0e471e3d8e49619e2c0c8a483454044c3f6",
+      "size": 23278
     },
     {
       "kind": "owned",
@@ -2527,8 +2527,8 @@
     {
       "kind": "owned",
       "path": "ui_handlers/__init__.py",
-      "sha256": "78bc88ee97e776ab0d7560db22296395c91e9ce5a1b062539d315b3c8fb4a488",
-      "size": 1120446
+      "sha256": "1f1afa056e330288f688987f5f4574c98bc32602069787d6b996c5e1a0370c99",
+      "size": 1120573
     },
     {
       "kind": "owned",
@@ -2677,7 +2677,7 @@
     {
       "kind": "owned",
       "path": "version.json",
-      "sha256": "98fd7ca17fe5c17323c2d1f0c4b555b1a5c5ad7adc621f2d3516a5a07184e070",
+      "sha256": "995501d4db930ab22d4e485df85829a9a1936f14d1bb1d7d5fb2ef6f6823da5d",
       "size": 243
     },
     {
@@ -2716,7 +2716,7 @@
     "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
     "schema_version": 1
   },
-  "release_version": "0.5.0.56",
+  "release_version": "0.5.0.57",
   "required_entries": [
     "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
     "cloud/lite-relay/README.md",
@@ -2745,5 +2745,5 @@
     "cpu": "x86_64",
     "platform": "windows"
   },
-  "total_bytes": 22831538
+  "total_bytes": 22848815
 }

@@ -6960,12 +6960,15 @@ try:
                                         refresh_action_label="4状態を確認",
                                     )
                                 )
-                                with gr.Group(
+                                with gr.Accordion(
+                                    "Lite用クラウドを更新",
+                                    open=False,
                                     visible=False,
                                     elem_id="lite_worker_update_guide",
                                 ) as lite_worker_update_guide:
                                     gr.Markdown(
                                         "### 次にすること：Lite用クラウドを更新\n"
+                                        "本体更新に含まれるスマホ画面の修正も、ここから反映できます。"
                                         "PWAの再登録ではなく、クラウド側を本体最新版に合わせます。"
                                         "この欄を上から順に進めてください。"
                                     )
