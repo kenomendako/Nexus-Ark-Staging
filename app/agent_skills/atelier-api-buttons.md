@@ -1,7 +1,7 @@
 ---
 id: atelier-api-buttons
 title: Atelier API buttons and Nexus Ark payloads
-summary: アトリエPWAからNexus Arkへ送信・記録・権限付きAPI呼び出しを行うとき。payload、scope、token更新、成功/失敗表示を実行役が確認します。
+summary: アトリエPWAのAPI payload、scope、再送、成功/失敗表示を確認する。
 applies_to:
   workspace_kinds: [persona, persona_project_read]
   keywords: [app, pwa, アプリ, webアプリ, api, nexus, capabilities, send_chat, write_event, read_items, write_items, payload, scope, token, 送信, ボタン, 権限, 記録, チャット, アイテム, エラー]
@@ -10,42 +10,24 @@ priority: 99
 max_chars: 1700
 ---
 
-## Nexus Ark API buttons
-Use this for apps that call Nexus Ark. Paths below are relative to `/api/v1/rooms/{roomId}/`.
-Always provide visible feedback for sending, success, partial success, and failure.
+## API buttons
+`GET status`: `persistent_emotions_available`/`persistent_emotions`は申告値/日時/参考値/表示状態。未申告≠0、期限切れ≠本人終了。`arousal_sample_count`:0=無記録、null=不明。閲覧専用。
+`POST chat/thoughts/translate` owner_only: `{text}` -> `{text}`. Click sends masked thoughts (cost); no reply/signatures/retry/memory writes.
 
-### Endpoints
-- Safe: `GET capabilities` (full live list), `status`, `locations`.
-- Read scopes: `read_chat`, `read_memory`, `read_notes`, `read_letters`, `read_calendar`, `read_twitter`, `read_items`, `read_autonomy`.
-- Action scopes: `send_chat` (chat/regenerate/uploads), `write_event`, `write_notes`, `write_calendar`, `write_items`, `write_location`, `write_autonomy`, `use_voice`, `manage_push`, `post_twitter`.
+`/api/v1/rooms/{roomId}/`; `GET capabilities`; visible feedback/status area: send/success/partial/failure.
+Scopes: capabilities; requested_scopes in `workspace/apps/<name>/nexus.json`; dream/episodic notes read-only.
 
-Fetch `GET capabilities` before implementation and follow its live `method`, `path`, `access`, and `scope`.
+Chat `{"message":"..."}`; `chat/regenerate` latest/no rerun. `chat/history`: music/notices, no RAW.
+Event `{"event_type":"..."}`, never type/content. `items/actions` stable client_action_id: gift once, place/pickup inventory,
+consume only `consume_location`.
 
-Declare scopes in `workspace/apps/<name>/nexus.json`: `{ "requested_scopes": ["write_event", "send_chat"] }`.
+`./_nexus/config` no-store; 401/403 once; 5xx stage/retry; 422 response fixes field.
+Owner-only paid profile/image; apps denied. `client_request_id` exact replay. AI/manual明示保存
+(`taste_profile` empty valid); no auto side effects.
 
-### Required payload shapes
-- `chat`: `{ "message":"...", "source":"atelier:<app>", "client_message_id":"..." }`; never `text`.
-- `chat/regenerate`: `{ "target_message_id":"latest-agent-message-id", "client_message_id":"unique-id" }`; latest reply only, no tool/action re-run.
-- `items/actions`: `{ "action":"gift|consume|place|pickup|consume_location", "item_id":"...", "amount":1, "location":"...", "furniture":"...", "client_action_id":"stable-unique-id" }`; reuse the ID on retry to prevent double execution.
-- `events`: `{ "event_type":"...", "source":"atelier:<app>", "summary":"...", "details":{}, "event_data":{}, "importance":"normal|high|critical" }`; never `type`/`content`.
-- A 422 response usually means token/scope is fine but JSON body is wrong. Read the body and fix the exact field.
-
-### Must-have diagnostics
-- Fetch `./_nexus/config` with `cache: "no-store"` near the API call; do not reuse startup tokens forever.
-- Validate payloads locally and name the exact missing field before sending.
-- Inspect `cfg.grantedScopes` / `cfg.pendingScopes` and show: ready / permission pending / denied or expired / payload incomplete.
-- Provide visible feedback for sending, success, partial success, and failure in an in-app status area that persists after any toast disappears.
-- On 401/403, refresh config once, retry once, then show the required scope and whether it is pending or denied.
-- On 5xx/network errors, show failing stage, retryability, and endpoint. Do not surface only "500".
-
-For item UI, fetch `GET items` first and only offer actions allowed by the returned item/location state. Treat `write_items` as sensitive: explain that granting it permits consumption, gifting, placement, and pickup, and require a visible confirmation before POST.
-
-For record/report buttons, POST `events` first so data is saved through the lightweight event path.
-Treat POST `chat` as optional follow-up because it waits for persona response generation.
-
-`owner_only` endpoints cannot be enabled by an app grant.
-This includes `/api/v1/lite-travel/standby`, `/api/v1/lite-travel/diagnostics`, and
-`/api/v1/lite-travel/return`; Atelier apps must not prepare snapshots or trigger return on the owner's behalf.
-
-### Final report
-Report requested scopes, observed granted/pending scopes, endpoints called, payload shape with secrets redacted, validation performed, and files/functions to inspect if the button still fails.
+Lite owner-only: `response-settings` GET revision; PUT `{key_name,model_name,enable_api_key_rotation,base_revision}`;
+DELETE `{base_revision}`; stale `409`. `chat/history?include_thoughts=true`; Lite `{key/memo,food,autonomy/settings,
+chat active/stop}`; `/api/v1/lite-travel/{standby,diagnostics,return}`. Grantsでowner-only開放不可、owner token要求禁止。 `temporary-location`: omit retains; `active:false` retains text/photo/name; clear explicit.
+`saved` GET/POST; duplicate `409`; unsafe/missing image retains text+flag. `.../generate` paid
+`{image_path,user_hint?,client_request_id}`; exact replay/no auto-regenerate. Draft generate/save/load; review/apply;
+presence locks writes.

@@ -27,7 +27,8 @@ except ImportError:
 
 # Playwright（JS主体の動的ページ取得のフォールバック）
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import sync_playwright as _playwright_available
+    from playwright_utils import sync_playwright
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
@@ -194,6 +195,11 @@ def _search_with_google(query: str) -> str:
     モデル混雑は同一キーで短く再試行し上限で諦める。従来は initial_api_key_name_global の
     1キー固定・ローテーション無しで、無料枠0のモデル等で即 429 失敗していた。
     """
+    import gemini_connection
+    connection = gemini_connection.normalize_connection(
+        gemini_connection.get_connection(force_global=True), require_valid=True,
+    )
+    vertex_mode = connection["backend"] == "vertex"
     # 検索モデルは設定で上書き可能（モデル廃止・移行に追従）。未設定なら既定値。
     search_model = str(config_manager.CONFIG_GLOBAL.get("search_model") or "").strip() or constants.SEARCH_MODEL
     rotation_enabled = config_manager.CONFIG_GLOBAL.get("enable_api_key_rotation", True)
@@ -202,27 +208,27 @@ def _search_with_google(query: str) -> str:
     generation_config_with_tool = types.GenerateContentConfig(tools=[search_tool_for_api])
 
     # 共通設定のキーから開始（内部処理と同方針）。無ければ従来の初期キーへフォールバック。
-    api_key = config_manager.get_active_gemini_api_key(None, model_name=search_model)
-    if not api_key:
+    api_key = None if vertex_mode else config_manager.get_active_gemini_api_key(None, model_name=search_model)
+    if not api_key and not vertex_mode:
         api_key = config_manager.GEMINI_API_KEYS.get(config_manager.initial_api_key_name_global)
-    if not api_key or api_key.startswith("YOUR_API_KEY"):
+    if not vertex_mode and (not api_key or api_key.startswith("YOUR_API_KEY")):
         return "[エラー: 有効なGoogle APIキーが設定されていません]"
 
     tried_keys = set()
     models_tried = set()
     server_error_retries = 0
     MAX_SERVER_ERROR_RETRIES = 3
-    max_attempts = max(3, len(config_manager.GEMINI_API_KEYS)) + 2
+    max_attempts = 1 if vertex_mode else max(3, len(config_manager.GEMINI_API_KEYS)) + 2
     last_error = None
 
     for attempt in range(max_attempts):
         models_tried.add(search_model)
-        key_name = config_manager.get_key_name_by_value(api_key)
+        key_name = "Vertex AI" if vertex_mode else config_manager.get_key_name_by_value(api_key)
         if key_name != "Unknown":
             tried_keys.add(key_name)
 
         # 枯渇キーは事前にローテーション
-        if config_manager.is_key_exhausted(key_name, model_name=search_model):
+        if not vertex_mode and config_manager.is_key_exhausted(key_name, model_name=search_model):
             if not rotation_enabled:
                 return "[エラー：Web検索キーが枯渇しています（共通設定でローテーション無効）]"
             nxt = config_manager.get_next_available_gemini_key(
@@ -234,9 +240,9 @@ def _search_with_google(query: str) -> str:
             tried_keys.add(nxt)
 
         try:
-            client = genai.Client(api_key=api_key)
+            client = gemini_connection.create_client(connection) if vertex_mode else genai.Client(vertexai=False, api_key=api_key)
             response = client.models.generate_content(
-                model=f'models/{search_model}',
+                model=search_model if vertex_mode else f'models/{search_model}',
                 contents=[query],
                 config=generation_config_with_tool
             )
@@ -262,6 +268,8 @@ def _search_with_google(query: str) -> str:
             return final_response.strip()
 
         except Exception as e:
+            if vertex_mode:
+                return "[エラー: Vertex AIでのGoogle検索に失敗しました。認証・検索モデル・リージョンを確認してください]"
             last_error = e
             err = str(e).upper()
             # モデル未提供（廃止・無効・そのティアで利用不可）はキーを替えても解決しない。
@@ -329,18 +337,23 @@ def test_search_model(model: str, api_key_name: str | None = None) -> tuple[bool
     戻り値: (成功したか, ユーザー向けメッセージ)
     """
     model_name = str(model or "").strip() or constants.SEARCH_MODEL
+    import gemini_connection
+    connection = gemini_connection.normalize_connection(
+        gemini_connection.get_connection(force_global=True), require_valid=True,
+    )
+    vertex_mode = connection["backend"] == "vertex"
     try:
         key_name = api_key_name or config_manager.initial_api_key_name_global
         api_key = config_manager.GEMINI_API_KEYS.get(key_name)
-        if not api_key or api_key.startswith("YOUR_API_KEY"):
+        if not vertex_mode and (not api_key or api_key.startswith("YOUR_API_KEY")):
             return False, f"有効なGoogle APIキー '{key_name}' が設定されていません。"
 
-        client = genai.Client(api_key=api_key)
+        client = gemini_connection.create_client(connection) if vertex_mode else genai.Client(vertexai=False, api_key=api_key)
         search_tool_for_api = types.Tool(google_search=types.GoogleSearch())
         config = types.GenerateContentConfig(tools=[search_tool_for_api])
 
         response = client.models.generate_content(
-            model=f"models/{model_name}",
+            model=model_name if vertex_mode else f"models/{model_name}",
             contents=["今日のニュースを1つ教えて"],
             config=config,
         )
@@ -356,6 +369,8 @@ def test_search_model(model: str, api_key_name: str | None = None) -> tuple[bool
         return True, f"モデル「{model_name}」で呼び出しは成功しましたが、応答テキストは空でした。"
 
     except Exception as e:
+        if vertex_mode:
+            return False, "Vertex AIの検索接続を確認できませんでした。認証・モデル・リージョンを確認してください。"
         return False, f"モデル「{model_name}」では検索を実行できませんでした。詳細: {e}"
 
 

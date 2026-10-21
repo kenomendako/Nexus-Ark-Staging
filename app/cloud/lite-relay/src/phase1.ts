@@ -337,10 +337,31 @@ export function validateSnapshot(value: unknown): TravelSnapshot {
   return snapshot;
 }
 
-export async function createPairingCode(db: D1Database, now: Date): Promise<{ code: string; expires_at: string }> {
+type PairingTtlMinutes = 5 | 15 | 30;
+
+const PAIRING_DEFAULT_TTL_MINUTES: PairingTtlMinutes = 5;
+const PAIRING_TTL_MINUTES = new Set<PairingTtlMinutes>([5, 15, 30]);
+
+function validatePairingTtlMinutes(value: unknown): PairingTtlMinutes {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    !PAIRING_TTL_MINUTES.has(value as PairingTtlMinutes)
+  ) {
+    throw new Error("invalid_pairing_ttl");
+  }
+  return value as PairingTtlMinutes;
+}
+
+export async function createPairingCode(
+  db: D1Database,
+  now: Date,
+  ttlMinutes: unknown = PAIRING_DEFAULT_TTL_MINUTES,
+): Promise<{ code: string; expires_at: string; ttl_minutes: PairingTtlMinutes }> {
+  const validatedTtlMinutes = validatePairingTtlMinutes(ttlMinutes);
   const code = randomToken(18);
   const codeHash = await sha256(code);
-  const expiresAt = new Date(now.getTime() + 5 * 60_000).toISOString();
+  const expiresAt = new Date(now.getTime() + validatedTtlMinutes * 60_000).toISOString();
   await db
     .prepare(
       `INSERT INTO pairing_codes (pairing_code_id, code_hash, expires_at, created_at)
@@ -348,7 +369,7 @@ export async function createPairingCode(db: D1Database, now: Date): Promise<{ co
     )
     .bind(crypto.randomUUID(), codeHash, expiresAt, now.toISOString())
     .run();
-  return { code, expires_at: expiresAt };
+  return { code, expires_at: expiresAt, ttl_minutes: validatedTtlMinutes };
 }
 
 export interface DeviceTokens {

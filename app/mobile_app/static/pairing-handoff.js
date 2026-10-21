@@ -1,7 +1,7 @@
 const PAIRING_PARAM = "nexus-lite-pairing";
 const EXPIRY_PARAM = "expires";
 const PAIRING_CODE_PATTERN = /^[A-Za-z0-9_-]{8,200}$/;
-const MAX_HANDOFF_LIFETIME_MS = 10 * 60_000;
+const MAX_HANDOFF_LIFETIME_MS = 30 * 60_000;
 
 export function parsePairingHandoff(href, nowMs = Date.now()) {
   let url;

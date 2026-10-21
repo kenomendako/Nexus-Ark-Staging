@@ -69,7 +69,7 @@ from tools.chess_tools import read_board_state, perform_move, get_legal_moves, r
 from tools.developer_tools import list_project_files, read_project_file
 from tools.agent_delegation_tools import delegate_agent_task, delegate_anthology_task, delegate_atelier_task, delegate_deep_research, share_atelier_work, check_agent_task_status, cancel_agent_task, get_atelier_app_capabilities, preview_atelier_app, set_atelier_app_icon, list_agent_playbooks, list_agent_roles, review_agent_task, revise_agent_task, steer_agent_task, read_agent_task_report, share_research_result, propose_playbook_update
 from tools.persona_contract_tools import read_persona_contract, check_text_against_persona_contract
-from tools.introspection_tools import manage_open_questions, manage_goals
+from tools.introspection_tools import manage_open_questions, manage_goals, manage_relationship_intentions, manage_emotions
 from tools.roblox_tools import send_roblox_command, roblox_build
 from tools.twitter_tools import draft_tweet, post_tweet, check_twitter_updates
 from tools.discord_tools import send_discord_message, send_discord_image
@@ -99,11 +99,13 @@ from tools.google_calendar_tools import read_calendar_schedule, check_free_time,
 from dreaming_manager import DreamingManager
 from goal_manager import GoalManager
 from entity_memory_manager import EntityMemoryManager
-from llm_factory import LLMFactory
+from llm_factory import LLMFactory, _usage_route_metadata
+from usage_normalizer import normalize_usage
 
 import utils
 import config_manager
 import gemini_explicit_cache_manager
+import gemini_connection
 import constants
 import action_logger
 import closet_manager
@@ -112,6 +114,12 @@ import pytz
 import signature_manager
 import room_manager
 from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
+from gemini_model_features import (
+    normalize_model_name,
+    supports_native_thinking_parts,
+    supports_thought_signatures,
+    tool_signature_map,
+)
 
 # 【マルチモデル対応】OpenAIエラーのインポート
 try:
@@ -120,6 +128,49 @@ try:
 except ImportError:
     # openaiがインストールされていない場合のフォールバック
     OPENAI_ERRORS = ()
+
+
+def _checkpoint_lite_scope() -> None:
+    """Lite停止境界をgraph nodeから確認する（scope外では何もしない）。"""
+    from api.lite_runtime_controls import checkpoint_lite_request
+
+    checkpoint_lite_request()
+
+
+def _wait_lite_scope(seconds: float) -> None:
+    """Lite停止を監視しながら待機する（scope外では通常sleep）。"""
+    from api.lite_runtime_controls import wait_lite_retry
+
+    wait_lite_retry(seconds)
+
+
+def _is_lite_request_stopped(error: Exception) -> bool:
+    from api.lite_runtime_controls import LiteRequestStopped
+
+    return isinstance(error, LiteRequestStopped)
+
+
+def _invoke_agent_non_streaming(llm, messages, timeout_seconds: float = 900):
+    """停止scopeと最終メッセージ通知を継承し、Flashを単発invokeする。"""
+    import concurrent.futures
+    from contextvars import copy_context
+
+    _checkpoint_lite_scope()
+
+    def invoke_with_checkpoint():
+        _checkpoint_lite_scope()
+        return llm.invoke(messages)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        invoke_context = copy_context()
+        future = executor.submit(invoke_context.run, invoke_with_checkpoint)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except concurrent.futures.TimeoutError:
+            print(f"--- [警告] LLM invoke がタイムアウトしました ({timeout_seconds}s) ---")
+            future.cancel()
+            raise TimeoutError(f"LLM応答タイムアウト ({timeout_seconds}秒)")
+
 
 all_tools = [
     request_capability,
@@ -170,7 +221,7 @@ all_tools = [
     delegate_agent_task, delegate_anthology_task, delegate_atelier_task, delegate_deep_research, share_atelier_work, check_agent_task_status, cancel_agent_task, get_atelier_app_capabilities, preview_atelier_app, set_atelier_app_icon, list_agent_playbooks, list_agent_roles, review_agent_task, revise_agent_task, steer_agent_task, read_agent_task_report, share_research_result, propose_playbook_update,
     read_persona_contract, check_text_against_persona_contract,
     # --- 内省ツール ---
-    manage_open_questions, manage_goals,
+    manage_open_questions, manage_goals, manage_relationship_intentions, manage_emotions,
     # --- ROBLOX連携ツール ---
     send_roblox_command, roblox_build, capture_roblox_screenshot,
     # --- 食べ物・アイテムツール ---
@@ -266,34 +317,178 @@ def _coerce_tool_text(value) -> str:
     return str(value).strip()
 
 
+_GEMINI_SIGNATURES_KEY = "__gemini_function_call_thought_signatures__"
+_GEMINI_SIGNATURE_MODEL_KEY = "__nexus_gemini_signature_model__"
+_GEMINI_SIGNATURE_CONNECTION_KEY = "__nexus_gemini_signature_connection__"
+
+
 def _supports_native_thinking_parts(model_name: str) -> bool:
-    model_name_lower = (model_name or "").lower()
-    return (
-        re.search(r"gemini[-_\s]?3(?:[.\-_]?\d+)?", model_name_lower) is not None
-        or "thinking" in model_name_lower
-    )
+    return supports_native_thinking_parts(model_name)
 
 
 def _is_gemini_3_flash_family(model_name: str) -> bool:
-    model_name_lower = (model_name or "").lower()
-    return _supports_native_thinking_parts(model_name_lower) and "gemini" in model_name_lower and "flash" in model_name_lower
+    normalized = normalize_model_name(model_name)
+    major_match = re.match(r"gemini[-_\s]?(\d+)", normalized)
+    return bool(
+        major_match
+        and int(major_match.group(1)) == 3
+        and "flash" in normalized
+        and supports_native_thinking_parts(normalized)
+    )
 
 def _is_gemini_3_signature_compatible(model_name: str) -> bool:
-    return "gemini-3" in (model_name or "").lower()
+    # 既存の呼び出し元・テスト名を保ったまま、Gemini 3以降へ判定範囲を広げる。
+    return supports_thought_signatures(model_name)
 
 def _strip_gemini_thought_signatures(messages: list) -> int:
-    """別モデルへ渡せない Gemini 3 thought signature を送信前履歴から除去する。"""
+    """別モデルへ渡せない Gemini thought signature を送信前履歴から除去する。"""
     stripped_count = 0
     for msg in messages or []:
         additional_kwargs = getattr(msg, "additional_kwargs", None)
         if not additional_kwargs:
             continue
         before = len(additional_kwargs)
-        additional_kwargs.pop("__gemini_function_call_thought_signatures__", None)
+        additional_kwargs.pop(_GEMINI_SIGNATURES_KEY, None)
+        additional_kwargs.pop(_GEMINI_SIGNATURE_MODEL_KEY, None)
+        additional_kwargs.pop(_GEMINI_SIGNATURE_CONNECTION_KEY, None)
         additional_kwargs.pop("thought_signature", None)
         if len(additional_kwargs) != before:
             stripped_count += 1
     return stripped_count
+
+
+def _plain_history_content(message) -> str:
+    """送信履歴を署名なしのテキストへ変換する際の本文抽出。"""
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict):
+                if part.get("type") in {"text", "thinking", "thought"}:
+                    value = part.get("text") or part.get("thinking") or part.get("content")
+                    if value:
+                        text_parts.append(str(value))
+                elif part.get("text"):
+                    text_parts.append(str(part["text"]))
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return "\n".join(text_parts)
+    return str(content or "")
+
+
+def _serialize_history_tool_args(value) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
+def _plainify_unsigned_tool_call(message: AIMessage, tool_calls: list) -> AIMessage:
+    """AIMessageのtool_callsをモデルへ送らない履歴テキストへ変換する。"""
+    updated = copy.deepcopy(message)
+    additional_kwargs = dict(getattr(updated, "additional_kwargs", {}) or {})
+    additional_kwargs.pop(_GEMINI_SIGNATURES_KEY, None)
+    additional_kwargs.pop(_GEMINI_SIGNATURE_MODEL_KEY, None)
+    additional_kwargs.pop(_GEMINI_SIGNATURE_CONNECTION_KEY, None)
+    additional_kwargs.pop("thought_signature", None)
+    updated.additional_kwargs = additional_kwargs
+    updated.tool_calls = []
+
+    call_lines = ["【ツール呼び出し履歴（署名なし）】"]
+    for call in tool_calls or []:
+        call_lines.extend(
+            [
+                f"ツール名: {call.get('name', '')}",
+                f"引数: {_serialize_history_tool_args(call.get('args', {}))}",
+            ]
+        )
+    call_text = "\n".join(call_lines)
+    existing_text = _plain_history_content(updated).strip()
+    updated.content = f"{existing_text}\n\n{call_text}".strip() if existing_text else call_text
+    return updated
+
+
+def _plainify_tool_result(message: ToolMessage, tool_name: str = "") -> HumanMessage:
+    """署名付きfunctionCallに対応しないモデルへToolMessageを送らない。"""
+    resolved_name = tool_name or str(getattr(message, "name", "") or "")
+    call_id = str(getattr(message, "tool_call_id", "") or "")
+    header = f"【ツール実行結果: {resolved_name or '不明なツール'}】"
+    if call_id:
+        header += f" (call_id={call_id})"
+    original_content = copy.deepcopy(getattr(message, "content", ""))
+    if isinstance(original_content, list):
+        # ToolMessageに画像等のmedia partが混在していても、テキスト化で失わない。
+        return HumanMessage(
+            content=[{"type": "text", "text": header}] + original_content
+        )
+    result_text = _plain_history_content(message)
+    return HumanMessage(content=f"{header}\n{result_text}".strip())
+
+
+def _flatten_tool_call_history_for_model(messages: list, model_name: str, connection_id: str = "developer") -> list:
+    """モデル境界を越える署名付き／未署名tool call履歴を平文へ変換する。
+
+    送信対象の複製だけを変換し、Stateが保持する元のメッセージには触れない。
+    Gemini 3以降では先頭tool callの署名と生成モデル由来が一致する場合だけ
+    functionCall/ToolMessageを維持する（並列呼出しの後続partに署名がない正規形を含む）。
+    単一署名を並列呼出しへ複製することはしない。
+    """
+    target_model = normalize_model_name(model_name)
+    target_requires_signature = supports_thought_signatures(target_model)
+    flattened_ids = set()
+    flattened_names = {}
+    prepared = []
+
+    for message in messages or []:
+        if isinstance(message, AIMessage) and getattr(message, "tool_calls", None):
+            tool_calls = list(message.tool_calls or [])
+            additional_kwargs = getattr(message, "additional_kwargs", {}) or {}
+            raw_signature = additional_kwargs.get(_GEMINI_SIGNATURES_KEY)
+            signature_by_id = tool_signature_map(raw_signature, tool_calls) if raw_signature else {}
+            origin_model = normalize_model_name(additional_kwargs.get(_GEMINI_SIGNATURE_MODEL_KEY, ""))
+            first_call_id = str(tool_calls[0].get("id") or "") if tool_calls else ""
+            first_call_signed = bool(first_call_id and first_call_id in signature_by_id)
+            origin_connection = additional_kwargs.get(_GEMINI_SIGNATURE_CONNECTION_KEY, "developer")
+            origin_matches = bool(origin_model) and origin_model == target_model and origin_connection == connection_id
+
+            if target_requires_signature:
+                # Geminiの並列functionCallは先頭partにだけthought_signatureが付くことがある。
+                # 先頭callの署名と生成モデル由来が一致すれば、後続callの署名欠落は正規形として保持する。
+                should_flatten = not (first_call_signed and origin_matches)
+            else:
+                # 思考署名を理解しない別モデルへ署名付きfunctionCallを持ち越さない。
+                should_flatten = bool(raw_signature or origin_model)
+
+            if should_flatten:
+                prepared.append(_plainify_unsigned_tool_call(message, tool_calls))
+                for call in tool_calls:
+                    call_id = call.get("id")
+                    if call_id:
+                        flattened_ids.add(str(call_id))
+                        flattened_names[str(call_id)] = str(call.get("name", ""))
+            else:
+                copied = copy.deepcopy(message)
+                # SDK境界へは常にtool IDに対応付けたdictを渡す。単一署名の並列複製は行わない。
+                if signature_by_id:
+                    copied.additional_kwargs = dict(getattr(copied, "additional_kwargs", {}) or {})
+                    copied.additional_kwargs[_GEMINI_SIGNATURES_KEY] = signature_by_id
+                prepared.append(copied)
+            continue
+
+        if isinstance(message, ToolMessage):
+            call_id = str(getattr(message, "tool_call_id", "") or "")
+            # 変換したAIMessageに対応するIDだけを平坦化し、別の正常なToolMessageは保護する。
+            if call_id in flattened_ids:
+                prepared.append(_plainify_tool_result(message, flattened_names.get(call_id, "")))
+            else:
+                prepared.append(copy.deepcopy(message))
+            continue
+
+        prepared.append(copy.deepcopy(message))
+
+    return prepared
 
 def _is_thought_signature_error(error: Exception | str) -> bool:
     error_str = str(error or "").lower()
@@ -740,6 +935,9 @@ def _compose_working_memory_section(
     content = str(wm_content or "").strip()
     if not content:
         return overview
+    if "dated_operational_sections" in (health_flags or []):
+        content = ("日付付きの意図・次の行動・終了条件が含まれます。スロット全体の更新日時は各節の再確認日時を意味しません。"
+                   "各節の日付とその後の会話を照合し、今も有効か判断してください。\n\n" + content)
     checkpoint_parts = [f"status={wm_status}"]
     if meaningful_activity_at:
         checkpoint_parts.append(f"最終の意味ある活動={meaningful_activity_at}")
@@ -890,6 +1088,7 @@ class AgentState(TypedDict):
     model_name: str
     system_prompt: SystemMessage
     generation_config: dict
+    _gemini_connection: dict
     send_core_memory: bool
     send_scenery: bool
     send_notepad: bool
@@ -1238,11 +1437,21 @@ def _should_skip_retrieval_locally(query_source: str) -> bool:
 
 def _invoke_retrieval_decision_with_timeout(llm, messages: list, timeout_seconds: float = 15.0):
     import concurrent.futures
+    from contextvars import copy_context
 
+    _checkpoint_lite_scope()
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(llm.invoke, messages)
+
+    def _invoke_with_checkpoint():
+        _checkpoint_lite_scope()
+        return llm.invoke(messages)
+
+    invoke_context = copy_context()
+    future = executor.submit(invoke_context.run, _invoke_with_checkpoint)
     try:
-        return future.result(timeout=timeout_seconds)
+        result = future.result(timeout=timeout_seconds)
+        _checkpoint_lite_scope()
+        return result
     except concurrent.futures.TimeoutError as exc:
         future.cancel()
         raise TimeoutError(f"検索要否判定がタイムアウトしました ({timeout_seconds:.0f}秒)") from exc
@@ -1353,6 +1562,7 @@ def _extract_search_queries(query_source: str, room_name: str) -> dict:
 
 
 def retrieval_node(state: AgentState):
+    _checkpoint_lite_scope()
     perf_start = time.time()
     room_name = state.get("room_name", "")
     print(f"--- [Retrieval] 自動記憶想起を開始 (room={room_name}) ---", flush=True)
@@ -1482,8 +1692,10 @@ INTENT: [emotional/factual/technical/temporal/relational]
         decision_response = ""
         for attempt in range(3):
             try:
+                _checkpoint_lite_scope()
                 response_obj = _invoke_retrieval_decision_with_timeout(llm_flash, messages, timeout_seconds=15.0)
                 decision_response = utils.get_content_as_string(response_obj).strip()
+                _checkpoint_lite_scope()
                 llm_enhanced = True
                 break
             except TimeoutError as e:
@@ -1491,6 +1703,8 @@ INTENT: [emotional/factual/technical/temporal/relational]
                 print(f"  - [Retrieval Timeout] {e} ルールベースクエリで検索を続行します。")
                 break  # LLM を諦めてルールベースで続行
             except Exception as e:
+                if _is_lite_request_stopped(e):
+                    raise
                 err_str = str(e).upper()
                 is_503 = "503" in err_str or "UNAVAILABLE" in err_str or "OVERLOADED" in err_str
                 is_429 = isinstance(e, google_exceptions.ResourceExhausted) or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str
@@ -1502,12 +1716,14 @@ INTENT: [emotional/factual/technical/temporal/relational]
 
                 if is_503:
                     print(f"  - [Retrieval Warning] 503 UNAVAILABLE detected in retrieval_node. Retrying locally (attempt {attempt+1}/3)...")
-                    time.sleep(2 * (attempt + 1))
+                    _wait_lite_scope(2 * (attempt + 1))
                     continue
                 # その他のエラー: ルールベースで続行
                 print(f"  - [Retrieval LLM Error] {e} ルールベースクエリで検索を続行します。")
                 break
     except Exception as llm_init_e:
+        if _is_lite_request_stopped(llm_init_e):
+            raise
         # LLMモデル初期化自体の失敗: ルールベースで続行
         print(f"  - [Retrieval LLM Init Error] {llm_init_e} ルールベースクエリで検索を続行します。")
 
@@ -1575,14 +1791,8 @@ INTENT: [emotional/factual/technical/temporal/relational]
             # さらに安全マージンとして +2 (直前のシステムメッセージ等) しておくと確実
             exclude_count = int(history_limit_option) * 2 + 2
 
-        # ▼▼▼ [2025-01-07 リデザイン] 知識ベース検索を除外 ▼▼▼
-        # 知識ベースは「外部資料・マニュアル」用であり、会話コンテキストへの自動注入は不適切。
-        # AIが能動的に資料を調べたい場合は search_knowledge_base ツールを使用する。
-        # ---
-        # 3a. 知識ベース (削除済み - AIがツールで能動的に検索)
-        # from tools.knowledge_tools import search_knowledge_base
-        # kb_result = search_knowledge_base.func(...)
-        # ▲▲▲ 知識ベース除外ここまで ▲▲▲
+        # 知識ベースの自動検索は下の3cでルーム別オプトインに従う。
+        # 手動の search_knowledge_base は自動想起の設定に関係なく利用できる。
 
         # ▼▼▼ [2024-12-28 最適化] 過去ログキーワード検索を除外 ▼▼▼
         # キーワードマッチ方式はノイズが多いため除外。
@@ -1627,7 +1837,7 @@ INTENT: [emotional/factual/technical/temporal/relational]
                     "knowledge",
                     knowledge_result,
                     route="rag",
-                    selection_route="semantic",
+                    selection_route="rag",
                     selected_count=knowledge_count,
                 )
             except Exception:
@@ -1765,6 +1975,8 @@ INTENT: [emotional/factual/technical/temporal/relational]
         return {"retrieved_context": final_context}
 
     except Exception as e:
+        if _is_lite_request_stopped(e):
+            raise
         # 429 エラー（ResourceExhausted）の場合は、上位でキャッチしてローテーションさせるために再送出する
         err_str = str(e).upper()
         if isinstance(e, google_exceptions.ResourceExhausted) or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
@@ -1777,6 +1989,7 @@ INTENT: [emotional/factual/technical/temporal/relational]
         return {"retrieved_context": ""}
 
 def context_generator_node(state: AgentState):
+    _checkpoint_lite_scope()
     perf_start = time.time()
     # ...
     room_name = state['room_name']
@@ -1858,7 +2071,9 @@ def context_generator_node(state: AgentState):
         try:
             from agent.temporary_location_manager import TemporaryLocationManager
             tlm = TemporaryLocationManager()
-            is_temp_active = tlm.is_active(soul_vessel_room)
+            is_temp_active = tlm.is_active(soul_vessel_room) and bool(
+                str(tlm.get_current_data(soul_vessel_room).get("scenery_text") or "").strip()
+            )
         except Exception as e:
             print(f"  - [TempLocation] チェックエラー（無視）: {e}")
             is_temp_active = False
@@ -1867,22 +2082,21 @@ def context_generator_node(state: AgentState):
             # === 一時的現在地モード ===
             temp_data = tlm.get_current_data(soul_vessel_room)
             temp_scenery = temp_data.get("scenery_text", "")
+            temp_location_name = str(temp_data.get("location_name") or "").strip()
             
             situation_status = ["【現在の状況】", f"- 季節: {season_ja}", f"- 時間帯: {time_of_day_ja}"]
             if weather_info_str:
                 situation_status.append(weather_info_str)
             situation_status.append("") # 改行用空行
             
+            temp_location_context = ["【現在の場所と情景（お出かけモード）】"]
+            if temp_location_name:
+                temp_location_context.append(f"- 場所: {temp_location_name}")
             if temp_scenery:
-                situation_prompt_parts.extend(situation_status + [
-                    "【現在の場所と情景（お出かけモード）】",
-                    f"- 今の情景: {temp_scenery}"
-                ])
+                temp_location_context.append(f"- 今の情景: {temp_scenery}")
             else:
-                situation_prompt_parts.extend(situation_status + [
-                    "【現在の場所と情景（お出かけモード）】",
-                    "（一時的現在地モードですが、情景データが未設定です）"
-                ])
+                temp_location_context.append("（一時的現在地モードですが、情景データが未設定です）")
+            situation_prompt_parts.extend(situation_status + temp_location_context)
             print(f"  - [TempLocation] 一時的現在地モードでプロンプトを構築しました")
         else:
             # === 仮想現在地モード（既存ロジック） ===
@@ -2233,9 +2447,12 @@ def context_generator_node(state: AgentState):
 
         # --- [Goal Memory] 目標の注入 ---
         goals_text = ""
+        presented_goals = []
         try:
             gm = GoalManager(room_name)
-            goals_text = gm.get_goals_for_prompt()
+            goal_snapshot = gm.get_prompt_goal_snapshot()
+            goals_text = gm.get_goals_for_prompt(goal_snapshot=goal_snapshot)
+            presented_goals = goal_snapshot["short_term"] + goal_snapshot["long_term"]
             if goals_text:
                 dream_insights_text += f"\n\n{goals_text}\n"
         except Exception as e:
@@ -2244,7 +2461,7 @@ def context_generator_node(state: AgentState):
         # --- [Purpose Profile] 長期目的・現在関心の注入 ---
         try:
             from purpose_profile_manager import PurposeProfileManager
-            purpose_text = PurposeProfileManager(room_name).get_summary_for_prompt(max_items=4)
+            purpose_text = PurposeProfileManager(room_name).get_summary_for_prompt(max_items=4, presented_goals=presented_goals)
             if purpose_text:
                 dream_insights_text += f"\n\n{purpose_text}\n"
                 print("  - [Context] Purpose Profileを注入しました。")
@@ -2253,6 +2470,7 @@ def context_generator_node(state: AgentState):
 
         # --- [Internal State] 内的状態の簡易版注入 ---
         # 通常対話時にもAIが自己の動機を意識できるようにする
+        mm = None
         try:
             from motivation_manager import MotivationManager
             mm = MotivationManager(room_name)
@@ -2281,6 +2499,11 @@ def context_generator_node(state: AgentState):
                 dream_insights_text += internal_state_brief
                 print(f"  - [Context] 内的状態を注入: {drive_label} ({drive_level:.2f})")
 
+            relationship_brief = mm.get_relationship_context_for_prompt(
+                dominant_drive, drive_level, drives["relatedness"])
+            if relationship_brief:
+                dream_insights_text += f"\n- {relationship_brief}\n"
+
             # 最も優先度の高い未解決の問いを注入
             questions = mm._state.get("drives", {}).get("curiosity", {}).get("open_questions", [])
             unresolved = [q for q in questions if not q.get("resolved_at")]
@@ -2300,6 +2523,14 @@ def context_generator_node(state: AgentState):
                     print(f"  - [Context] 未解決の問いを注入: {topic[:30]}...")
         except Exception as e:
             print(f"  - [Context] 内的状態の読み込みエラー: {e}")
+
+        # 感情は独立した読取専用経路で最大二件。動機の初期化・計算失敗も提示を止めない。
+        try:
+            from motivation_manager import MotivationManager
+            emotion_reader = MotivationManager(room_name, initialize=False)
+            dream_insights_text += emotion_reader.get_emotion_context_for_prompt()
+        except Exception as e:
+            print(f"  - [Context] 感情の余韻の読み込みエラー: {e}")
 
     action_plan_context = ""
     try:
@@ -2403,9 +2634,12 @@ def context_generator_node(state: AgentState):
     except Exception as e:
         print(f"  - [Context] 自律行動ツールフィルタリングエラー: {e}")
 
-    explicit_cache_reason = gemini_explicit_cache_manager.get_disabled_reason(
-        room_name,
-        model_name=state.get("model_name", ""),
+    explicit_cache_reason = (
+        "vertex_not_supported"
+        if _gemini_connection_for_state(state).get("backend") == "vertex"
+        else gemini_explicit_cache_manager.get_disabled_reason(
+            room_name, model_name=state.get("model_name", ""),
+        )
     )
     if (
         state.get("tool_use_enabled", True)
@@ -2797,67 +3031,26 @@ def _prompt_cache_usage_data(
     prompt_tokens: int | None = None,
 ) -> dict:
     """UI表示用にプロンプトキャッシュ使用量を正規化する。"""
-    usage = getattr(response, "usage_metadata", None)
-    metadata = response_metadata if isinstance(response_metadata, dict) else {}
-    if not metadata:
-        metadata = getattr(response, "response_metadata", {}) or {}
-    token_usage = metadata.get("token_usage") if isinstance(metadata, dict) else {}
-    metadata_usage = metadata.get("usage") if isinstance(metadata, dict) else {}
-    prompt_details = {}
-    if isinstance(token_usage, dict):
-        prompt_details = token_usage.get("prompt_tokens_details") or {}
-
-    def _val(obj, key):
-        if isinstance(obj, dict):
-            return obj.get(key)
-        return getattr(obj, key, None) if obj else None
-
-    def _first_present(*vals):
-        # 0 も「取得済み」として扱う（キャッシュミス=0 とフィールド欠落=None を区別する）
-        for v in vals:
-            if v is not None:
-                return v
-        return None
-
-    def _int_or_zero(value) -> int:
-        try:
-            return int(value or 0)
-        except (TypeError, ValueError):
-            return 0
-
-    input_token_details = usage.get("input_token_details", {}) if isinstance(usage, dict) else {}
-    cache_read = _first_present(
-        _val(usage, "cached_content_token_count"),
-        _val(usage, "cache_read_input_tokens"),
-        (input_token_details or {}).get("cache_read"),
-        _val(metadata_usage, "cache_read_input_tokens"),
-        metadata.get("cache_read_input_tokens") if isinstance(metadata, dict) else None,
-        prompt_details.get("cached_tokens") if isinstance(prompt_details, dict) else None,
-    )
-    cache_created = _first_present(
-        _val(metadata_usage, "cache_creation_input_tokens"),
-        metadata.get("cache_creation_input_tokens") if isinstance(metadata, dict) else None,
-    )
-
-    if cache_read is None and cache_created is None:
+    normalized = normalize_usage(response, response_metadata=response_metadata)
+    has_cache_read = "cache_read_tokens" in normalized
+    has_cache_creation = "cache_creation_tokens" in normalized
+    if not has_cache_read and not has_cache_creation:
         return {}
 
-    cache_read_tokens = _int_or_zero(cache_read)
-    cache_creation_tokens = _int_or_zero(cache_created)
-    prompt_token_count = _int_or_zero(prompt_tokens)
-    metadata_cache_read = metadata.get("cache_read_input_tokens") if isinstance(metadata, dict) else None
-    metadata_cache_created = metadata.get("cache_creation_input_tokens") if isinstance(metadata, dict) else None
-    has_anthropic_usage = (
-        _val(usage, "cache_read_input_tokens") is not None
-        or _val(metadata_usage, "cache_read_input_tokens") is not None
-        or metadata_cache_read is not None
-        or _val(metadata_usage, "cache_creation_input_tokens") is not None
-        or metadata_cache_created is not None
+    try:
+        cache_read_tokens = int(normalized.get("cache_read_tokens") or 0)
+        cache_creation_tokens = int(normalized.get("cache_creation_tokens") or 0)
+        prompt_token_count = int(
+            prompt_tokens if prompt_tokens is not None else normalized.get("prompt_tokens") or 0
+        )
+    except (TypeError, ValueError):
+        return {}
+    total_input_tokens = int(
+        normalized.get("cache_total_input_tokens")
+        or normalized.get("total_input_tokens")
+        or prompt_token_count
+        or cache_read_tokens + cache_creation_tokens
     )
-    if has_anthropic_usage:
-        total_input_tokens = prompt_token_count + cache_read_tokens + cache_creation_tokens
-    else:
-        total_input_tokens = prompt_token_count or cache_read_tokens + cache_creation_tokens
 
     return {
         "cache_read_tokens": cache_read_tokens,
@@ -2903,6 +3096,15 @@ def _is_openai_llm(llm) -> bool:
         return isinstance(llm, ChatOpenAI)
     except Exception:
         return False
+
+
+def _usage_billing_metadata(llm, gemini_connection_config: dict | None) -> dict:
+    """Return billing route metadata from the client actually used this turn."""
+    # bind()/bind_tools() can wrap the client in RunnableBinding.  The caller
+    # normally passes the original client, but unwrap defensively before route
+    # classification so a wrapper cannot silently turn a provider into unknown.
+    client = getattr(llm, "bound", llm)
+    return _usage_route_metadata(client, gemini_connection_config)
 
 def _strip_cache_breakpoint_marker(system_text: str) -> str:
     return (
@@ -3124,10 +3326,21 @@ def _build_system_message_for_llm(system_text: str, llm) -> SystemMessage:
         return SystemMessage(content=_build_anthropic_cached_system_content(system_text))
     return SystemMessage(content=_strip_cache_breakpoint_marker(system_text))
 
+def _gemini_connection_for_state(state: dict) -> dict:
+    explicit = state.get("_gemini_connection")
+    if isinstance(explicit, dict):
+        return explicit
+    room_name = state.get("room_name", "")
+    if config_manager.get_active_provider(room_name) != "google":
+        return {"backend": "developer"}
+    return gemini_connection.get_connection(room_name)
+
+
 def agent_node(state: AgentState):
     """
     主要な思考・ツール呼び出し決定を行うノード。
     """
+    _checkpoint_lite_scope()
     import signature_manager
 
     print("--- エージェントノード (agent_node) 実行 ---")
@@ -3181,6 +3394,8 @@ def agent_node(state: AgentState):
 
     all_participants = state.get('all_participants', [])
     current_room = state['room_name']
+    gemini_connection_config = _gemini_connection_for_state(state)
+    signature_connection_id = gemini_connection.connection_id(gemini_connection_config)
     if len(all_participants) > 1:
         other_participants = [p for p in all_participants if p != current_room]
         persona_lock_prompt = (
@@ -3269,7 +3484,12 @@ def agent_node(state: AgentState):
             f"({original_tool_chars} -> {compressed_tool_chars} chars, -{saved_chars})"
         )
 
-    messages_for_agent = [final_system_prompt_message] + history_messages_for_agent
+    # 署名補完・モデル境界の平坦化は送信専用の複製へだけ適用する。
+    # Stateのmessagesや履歴オブジェクトを直接変更すると、同一turnの再試行／別モデルfallbackへ
+    # 変更済みのtool_callsが持ち越されるため、ここで深い複製を作る。
+    messages_for_agent = [final_system_prompt_message] + [
+        copy.deepcopy(message) for message in history_messages_for_agent
+    ]
     messages_for_agent, pending_capability_followup_update = _apply_pending_capability_followup_instruction(
         messages_for_agent,
         state,
@@ -3288,7 +3508,11 @@ def agent_node(state: AgentState):
     is_gemini_3_flash = _is_gemini_3_flash_family(model_name_for_agent)
     is_gemini_3_signature_compatible = _is_gemini_3_signature_compatible(model_name_for_agent)
 
-    turn_context = signature_manager.get_turn_context(current_room)
+    turn_context = signature_manager.get_turn_context(
+        current_room,
+        model_name=model_name_for_agent,
+        connection_id=signature_connection_id,
+    ) or {}
     stored_gemini_signatures = turn_context.get("gemini_function_call_thought_signatures")
     stored_tool_calls = turn_context.get("last_tool_calls")
 
@@ -3318,28 +3542,33 @@ def agent_node(state: AgentState):
             if isinstance(msg, AIMessage):
                 # 既に tool_calls を持っている場合（ログから復元済みの場合）、上書きしない
                 if stored_tool_calls and (not hasattr(msg, 'tool_calls') or not msg.tool_calls):
-                     msg.tool_calls = stored_tool_calls
+                     msg.tool_calls = copy.deepcopy(stored_tool_calls)
                      if state.get("debug_mode", False): print(f"  - [GEMINI3_DEBUG] ToolCallsを補完: index={actual_idx}")
 
-                # 既に署名を持っている場合は上書きしない
-                has_sig = msg.additional_kwargs.get("__gemini_function_call_thought_signatures__") if msg.additional_kwargs else None
-                if stored_gemini_signatures and not has_sig:
+                # 既に同一生成モデル由来の署名を持っている場合は上書きしない。
+                # 由来不明／別モデル由来の署名は、同一モデルのTurn Contextだけで補完する。
+                has_sig = msg.additional_kwargs.get(_GEMINI_SIGNATURES_KEY) if msg.additional_kwargs else None
+                existing_origin = normalize_model_name(
+                    msg.additional_kwargs.get(_GEMINI_SIGNATURE_MODEL_KEY, "")
+                    if msg.additional_kwargs
+                    else ""
+                )
+                trusted_sig = bool(has_sig and existing_origin == normalize_model_name(model_name_for_agent)
+                                   and msg.additional_kwargs.get(_GEMINI_SIGNATURE_CONNECTION_KEY, "developer") == signature_connection_id)
+                if stored_gemini_signatures and not trusted_sig:
                     if not msg.additional_kwargs: msg.additional_kwargs = {}
 
-                    # 署名を SDK が期待する {tool_call_id: signature} の辞書形式に変換
-                    final_sig_dict = {}
-                    if isinstance(stored_gemini_signatures, dict):
-                        final_sig_dict = stored_gemini_signatures
-                    else:
-                        # 文字列やリストの場合は、現在の tool_calls と紐付ける
-                        sig_val = stored_gemini_signatures[0] if isinstance(stored_gemini_signatures, list) and stored_gemini_signatures else stored_gemini_signatures
-                        if msg.tool_calls:
-                            for tc in msg.tool_calls:
-                                tc_id = tc.get("id")
-                                if tc_id: final_sig_dict[tc_id] = sig_val
+                    # 署名を元のtool IDへ対応付ける。単一値は先頭1件だけに対応し、
+                    # 並列tool callへ複製しない。
+                    final_sig_dict = tool_signature_map(
+                        stored_gemini_signatures,
+                        getattr(msg, "tool_calls", []) or [],
+                    )
 
                     if final_sig_dict:
-                        msg.additional_kwargs["__gemini_function_call_thought_signatures__"] = final_sig_dict
+                        msg.additional_kwargs[_GEMINI_SIGNATURES_KEY] = final_sig_dict
+                        msg.additional_kwargs[_GEMINI_SIGNATURE_MODEL_KEY] = normalize_model_name(model_name_for_agent)
+                        msg.additional_kwargs[_GEMINI_SIGNATURE_CONNECTION_KEY] = signature_connection_id
                         signature_restored = True
                         if state.get("debug_mode", False): print(f"  - [GEMINI3_DEBUG] 署名を補完: index={actual_idx}")
 
@@ -3378,7 +3607,11 @@ def agent_node(state: AgentState):
         and not autonomy_finalization_pending
         and not requested_capabilities_for_turn
     ):
-        disabled_reason = gemini_explicit_cache_manager.get_disabled_reason(room_name, model_name=state.get("model_name", ""))
+        disabled_reason = (
+            "vertex_not_supported"
+            if gemini_connection_config.get("backend") == "vertex"
+            else gemini_explicit_cache_manager.get_disabled_reason(room_name, model_name=state.get("model_name", ""))
+        )
         if not disabled_reason:
             try:
                 from agent.tool_registry import ToolRegistry
@@ -3430,7 +3663,15 @@ def agent_node(state: AgentState):
         generation_config=state['generation_config'],
         room_name=state['room_name'],  # ルーム個別のプロバイダ設定を使用
         gemini_cached_content=gemini_cached_content,
+        response_model=True,  # 推論強度は主応答のモデル生成だけへ適用する。
+        gemini_connection_config=gemini_connection_config,
     )
+    # bind()/bind_tools() は実装によって元モデル属性を隠すため、送信前に由来を確定する。
+    actual_signature_model = normalize_model_name(
+        _get_llm_model_name(llm, model_name_for_agent)
+    )
+    # 以降の送信境界判定は、factoryが実際に選んだ生成モデルへ揃える。
+    is_gemini_3_signature_compatible = supports_thought_signatures(actual_signature_model)
 
     # --- 【2026-01-20】Gemini 3 Flash: Automatic Function Calling (AFC) 無効化 ---
     # llm.bind() を使って invoke 時にパラメータを注入する。
@@ -3594,17 +3835,27 @@ def agent_node(state: AgentState):
                 if not has_response:
                     if state.get("debug_mode", False):
                         print(f"  - [History Cleanup] 未回答のツール呼び出しを検出。情報の整合性を保つため tool_calls をクリアします (index={i})")
-                    import copy
                     msg_copy = copy.deepcopy(msg)
                     msg_copy.tool_calls = []
                     if hasattr(msg_copy, 'additional_kwargs') and msg_copy.additional_kwargs:
-                        msg_copy.additional_kwargs.pop("__gemini_function_call_thought_signatures__", None)
+                        msg_copy.additional_kwargs.pop(_GEMINI_SIGNATURES_KEY, None)
+                        msg_copy.additional_kwargs.pop(_GEMINI_SIGNATURE_MODEL_KEY, None)
+                        msg_copy.additional_kwargs.pop(_GEMINI_SIGNATURE_CONNECTION_KEY, None)
                     cleaned_messages.append(msg_copy)
                 else:
                     cleaned_messages.append(msg)
             else:
                 cleaned_messages.append(msg)
         messages_for_agent = cleaned_messages
+
+    # Gemini 3以降では、未署名／由来不一致のfunctionCallとそれに対応するToolMessageを
+    # そのまま送ると400になる。呼び出し名・引数・結果を送信履歴の平文へ残し、SDKが不正な
+    # functionCall/ToolMessageを組み立てない境界にする。
+    messages_for_agent = _flatten_tool_call_history_for_model(
+        messages_for_agent,
+        actual_signature_model,
+        connection_id=signature_connection_id,
+    )
 
     if not is_gemini_3_signature_compatible:
         stripped_count = _strip_gemini_thought_signatures(messages_for_agent)
@@ -3623,7 +3874,7 @@ def agent_node(state: AgentState):
         )
 
     # --- [Gemini 3 DEBUG] 送信前のメッセージ履歴構造を出力 ---
-    if state.get("debug_mode", False) and ("gemini-3" in state.get('model_name', '').lower()):
+    if state.get("debug_mode", False) and is_gemini_3_signature_compatible:
         print(f"\n--- [GEMINI3_DEBUG] 送信メッセージ構造 ({len(messages_for_agent)}件) ---")
         # 要約メッセージの位置を検出して先頭に表示
         summary_pos = None
@@ -3639,7 +3890,7 @@ def agent_node(state: AgentState):
             actual_idx = len(messages_for_agent) - 10 + idx if len(messages_for_agent) > 10 else idx
             msg_type = type(msg).__name__
             has_tool_calls = hasattr(msg, 'tool_calls') and msg.tool_calls
-            has_sig = msg.additional_kwargs.get('__gemini_function_call_thought_signatures__') if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs else None
+            has_sig = msg.additional_kwargs.get(_GEMINI_SIGNATURES_KEY) if hasattr(msg, 'additional_kwargs') and msg.additional_kwargs else None
             content_preview = ""
             if isinstance(msg.content, str):
                 content_preview = (msg.content[:50] + "...") if len(msg.content) > 50 else msg.content
@@ -3671,6 +3922,11 @@ def agent_node(state: AgentState):
                 print("  - [末尾ロールガード] 末尾がAIMessageのため、HumanMessageを追加しました")
             else:
                 print("  - [末尾ロールガード] 末尾がAIMessageですが、ツール使用が含まれるためHumanMessageの追加をスキップしました")
+
+        if _is_anthropic_llm(llm):
+            # 表示用テキストへ変換した思考を、同じモデルのツール往復でだけ復元する。
+            from anthropic_thinking import restore_thinking_messages
+            messages_for_agent = restore_thinking_messages(messages_for_agent, actual_signature_model)
 
         if not explicit_cache_context:
             messages_for_agent = _prepare_messages_for_provider_cache(messages_for_agent, llm)
@@ -3721,13 +3977,17 @@ def agent_node(state: AgentState):
                     # --- 通常のストリーミングモード ---
                     # print(f"  - AIモデルにリクエストを送信中 (Streaming)... [試行 {attempt + 1}]")
                     first_token_time = None
+                    _checkpoint_lite_scope()
                     try:
                         for chunk in llm_or_llm_with_tools.stream(messages_for_agent):
+                            _checkpoint_lite_scope()
                             if first_token_time is None:
                                 first_token_time = time.time()
                                 print(f"--- [PERF] agent_node stream: First token latency: {first_token_time - stream_start_time:.4f}s ---")
                             chunks.append(chunk)
                     except Exception as e:
+                        if _is_lite_request_stopped(e):
+                            raise
                         print(f"--- [警告] ストリーミング中に例外が発生しました: {e} ---")
                         if not chunks: raise e
 
@@ -3762,17 +4022,12 @@ def agent_node(state: AgentState):
 
                     try:
                         # [2026-02-19 FIX] タイムアウト付きinvoke（API無応答によるハング防止）
-                        import concurrent.futures
                         _LLM_INVOKE_TIMEOUT = 900  # Local LLM等の長文処理対策で延長 (300 -> 900秒)
-                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                            future = executor.submit(llm_or_llm_with_tools.invoke, messages_for_agent)
-                            try:
-                                response_direct = future.result(timeout=_LLM_INVOKE_TIMEOUT)
-                            except concurrent.futures.TimeoutError:
-                                print(f"--- [警告] LLM invoke がタイムアウトしました ({_LLM_INVOKE_TIMEOUT}s) ---")
-                                future.cancel()
-                                raise TimeoutError(f"LLM応答タイムアウト ({_LLM_INVOKE_TIMEOUT}秒)")
+                        response_direct = _invoke_agent_non_streaming(
+                            llm_or_llm_with_tools, messages_for_agent, _LLM_INVOKE_TIMEOUT
+                        )
 
+                        _checkpoint_lite_scope()
                         # Gemini 3 Flash (Thinking Mode) は content をリストで返すことがある。
                         # ここで text だけへ破壊的に正規化すると、後段の
                         # thinking/thought -> [THOUGHT] 変換に思考パートが届かないため、
@@ -3846,6 +4101,8 @@ def agent_node(state: AgentState):
                         print(f"  - Invoke完了: 合計{total_invoke_time:.2f}秒")
 
                     except Exception as e:
+                        if _is_lite_request_stopped(e):
+                            raise
                         print(f"--- [警告] Invoke中に例外が発生しました: {e} ---")
                         raise e
 
@@ -3863,7 +4120,7 @@ def agent_node(state: AgentState):
                         # 【2026-04-28 改善】エクスポネンシャルバックオフ (2s, 4s, 8s)
                         backoff_wait = 2 * (2 ** attempt)
                         print(f"  - [Retry] AIからの有効な応答が得られませんでした。{backoff_wait}秒後に再試行します... ({attempt+1}/{max_agent_retries})")
-                        time.sleep(backoff_wait)
+                        _wait_lite_scope(backoff_wait)
                         continue # 次の試行へ
                     # 【2026-04-28 改善】全リトライ失敗時、保持した thinking パートがあればフォールバック表示
                     if last_thinking_content:
@@ -3881,7 +4138,7 @@ def agent_node(state: AgentState):
 
                     # ★ デバッグ: Gemini 3 思考署名の確認
                     if state.get("debug_mode", False):
-                        gemini_signatures = additional_kwargs.get("__gemini_function_call_thought_signatures__")
+                        gemini_signatures = additional_kwargs.get(_GEMINI_SIGNATURES_KEY)
                         if not gemini_signatures:
                             found_sig = None
                             for c in chunks:
@@ -3901,21 +4158,19 @@ def agent_node(state: AgentState):
                                             if sig: found_sig = sig; break
                                 if found_sig: break
 
-                            if found_sig:
-                                sig_dict = {}
-                                if all_tool_calls_chunks:
-                                    for tc in all_tool_calls_chunks:
-                                        # tc が dict 形式であることを確認
-                                        if isinstance(tc, dict):
-                                            tc_id = tc.get("id")
-                                            if tc_id: sig_dict[tc_id] = found_sig
-                                additional_kwargs["__gemini_function_call_thought_signatures__"] = sig_dict if sig_dict else [found_sig]
+                            if found_sig and all_tool_calls_chunks:
+                                # 単一署名を並列tool callへ複製せず、先頭のcallだけへ対応付ける。
+                                sig_dict = tool_signature_map(found_sig, all_tool_calls_chunks)
+                                if sig_dict:
+                                    additional_kwargs[_GEMINI_SIGNATURES_KEY] = sig_dict
 
                     combined_text = _combine_chunks_with_thought_parts(chunks)
                     # ループを抜ける条件（正常な応答が得られた）
                     break
 
             except Exception as e:
+                if _is_lite_request_stopped(e):
+                    raise
                 # 429 RESOURCE_EXHAUSTED はキー制御のため即時に上位へ戻す。
                 # 503 UNAVAILABLE / OVERLOADED はモデル側の一時過負荷なので、同じ
                 # prompt/tools/api key のまま agent_node 内で吸収し、context_generator の
@@ -3960,18 +4215,23 @@ def agent_node(state: AgentState):
                     if attempt < max_agent_retries:
                         backoff_wait = 2 * (2 ** attempt)
                         print(f"  - [Agent Retry] 503 UNAVAILABLE/OVERLOADED detected in agent_node. Retrying local LLM call on SAME key after {backoff_wait}s... ({attempt+1}/{max_agent_retries})")
-                        time.sleep(backoff_wait)
+                        _wait_lite_scope(backoff_wait)
                         continue
                     print(f"--- [DEBUG] agent_node local 503 retry exhausted. 上位へ制御を戻します({err_str})。 ---")
                     raise e
 
                 print(f"--- [警告] agent_node 試行 {attempt + 1} でエラーが発生しました: {e} ---")
                 if attempt < max_agent_retries:
-                    time.sleep(2) # エラー時は少し長めに待機
+                    _wait_lite_scope(2) # エラー時は少し長めに待機
                     continue
                 raise e
 
         # --- [結果の統合] ---
+        anthropic_thinking_content = None
+        if merged_chunk and _is_anthropic_llm(llm):
+            # 思考署名・redacted block・tool_useの順序を表示化より前に保全する。
+            from anthropic_thinking import capture_thinking_content
+            anthropic_thinking_content = capture_thinking_content(merged_chunk, actual_signature_model)
         if chunks and merged_chunk:
             merged_chunk.content = combined_text
             response = merged_chunk
@@ -3983,43 +4243,46 @@ def agent_node(state: AgentState):
                 tool_calls=all_tool_calls_chunks
             )
 
-        # 署名確保
-        captured_signature = additional_kwargs.get("__gemini_function_call_thought_signatures__")
-        if captured_signature:
-            signature_manager.save_turn_context(state['room_name'], captured_signature, all_tool_calls_chunks)
+        if anthropic_thinking_content:
+            response.additional_kwargs["__nexus_anthropic_thinking__"] = anthropic_thinking_content
 
-        # 実送信トークン量の抽出（プロンプト＋回答）
-        # LangChain (Gemini/OpenAI) で形式が異なる場合があるため柔軟に取得
-        # response_metadata ガード
-        rm_safe = response_metadata if isinstance(response_metadata, dict) else {}
-        actual_usage = rm_safe.get("token_usage") or rm_safe.get("usage")
+        # 署名確保。factoryが別名／fallbackモデルを選んだ場合に備え、responseの実モデル由来を残す。
+        captured_signature = additional_kwargs.get(_GEMINI_SIGNATURES_KEY)
+        normalized_captured_signature = tool_signature_map(
+            captured_signature,
+            all_tool_calls_chunks,
+        ) if captured_signature else {}
+        response_additional_kwargs = getattr(response, "additional_kwargs", None)
+        if all_tool_calls_chunks and is_gemini_3_signature_compatible:
+            # 署名mapがSDKの別フィールドに現れる応答でも、現在turnの生成元は保持する。
+            # 次回送信時に別モデル由来のtool callと誤認して復元しないためのmarker。
+            additional_kwargs[_GEMINI_SIGNATURE_MODEL_KEY] = actual_signature_model
+            additional_kwargs[_GEMINI_SIGNATURE_CONNECTION_KEY] = signature_connection_id
+            if isinstance(response_additional_kwargs, dict):
+                response_additional_kwargs[_GEMINI_SIGNATURE_MODEL_KEY] = actual_signature_model
+                response_additional_kwargs[_GEMINI_SIGNATURE_CONNECTION_KEY] = signature_connection_id
+        if normalized_captured_signature:
+            captured_signature = normalized_captured_signature
+            additional_kwargs[_GEMINI_SIGNATURES_KEY] = normalized_captured_signature
+            if isinstance(response_additional_kwargs, dict):
+                response_additional_kwargs[_GEMINI_SIGNATURES_KEY] = normalized_captured_signature
+            signature_manager.save_turn_context(
+                state['room_name'],
+                captured_signature,
+                all_tool_calls_chunks,
+                model_name=actual_signature_model,
+                connection_id=signature_connection_id,
+            )
 
-        if not actual_usage:
-            # response (旧 merged_chunk) の属性確認
-            if hasattr(response, "usage_metadata"):
-                actual_usage = getattr(response, "usage_metadata", None)
-            elif hasattr(response, "response_metadata"):
-                # merged_chunk 自身が response_metadata を持っている場合（念のため）
-                rm_inner = getattr(response, "response_metadata", {})
-                if isinstance(rm_inner, dict):
-                    actual_usage = rm_inner.get("token_usage") or rm_inner.get("usage")
-
-        # 辞書形式ならそのまま、そうでなければ属性から
-        token_data = {}
-        if actual_usage:
-            if isinstance(actual_usage, dict):
-                token_data = {
-                    "prompt_tokens": actual_usage.get("prompt_tokens") or actual_usage.get("prompt_token_count") or actual_usage.get("input_tokens", 0),
-                    "completion_tokens": actual_usage.get("completion_tokens") or actual_usage.get("candidates_token_count") or actual_usage.get("output_tokens", 0),
-                    "total_tokens": actual_usage.get("total_tokens") or actual_usage.get("total_token_count", 0)
-                }
-            else:
-                # オブジェクト（Response, UsageMetadata 等）としてのアクセス
-                token_data = {
-                    "prompt_tokens": getattr(actual_usage, "prompt_tokens", None) or getattr(actual_usage, "prompt_token_count", None) or getattr(actual_usage, "input_tokens", 0),
-                    "completion_tokens": getattr(actual_usage, "completion_tokens", None) or getattr(actual_usage, "candidates_token_count", None) or getattr(actual_usage, "output_tokens", 0),
-                    "total_tokens": getattr(actual_usage, "total_tokens", None) or getattr(actual_usage, "total_token_count", 0)
-                }
+        # 実送信トークン量の抽出（プロンプト＋回答）。
+        # LangChain Google/OpenAI、native google-genai、OpenRouter の raw usage
+        # を共通正規化し、thoughts の二重加算と cache=0/未取得の混同を防ぐ。
+        token_data = normalize_usage(
+            response,
+            response_metadata=response_metadata,
+            model_name=state.get("model_name", ""),
+            extra_usage=_usage_billing_metadata(llm, gemini_connection_config),
+        )
 
         cache_usage_data = _log_prompt_cache_usage(
             state.get("model_name", "unknown"),
@@ -4030,14 +4293,21 @@ def agent_node(state: AgentState):
         token_data["model_name"] = state.get("model_name", "")
         token_data["is_paid"] = True
         model_provider_for_paid = "gemini" if "gemini" in str(state.get("model_name", "")).lower() else ""
-        if model_provider_for_paid:
+        normalized_usage_model = normalize_model_name(str(state.get("model_name", "")))
+        if (
+            model_provider_for_paid
+            and token_data.get("billing_backend") == "developer"
+            and normalized_usage_model != "gemini-4-argon"
+        ):
             key_name_for_paid = state.get("api_key_name") or config_manager.get_key_name_by_value(state.get("api_key", ""))
             token_data["is_paid"] = config_manager.is_paid_api_key_name(key_name_for_paid)
         if explicit_cache_context:
+            cache_reported = bool(cache_usage_data)
             cache_usage_data.setdefault("cache_read_tokens", 0)
             cache_usage_data.setdefault("cache_creation_tokens", 0)
             cache_usage_data.setdefault("cache_total_input_tokens", token_data.get("prompt_tokens", 0) or 0)
             cache_usage_data.setdefault("total_input_tokens", token_data.get("prompt_tokens", 0) or 0)
+            cache_usage_data.setdefault("cache_status", "reported" if cache_reported else "missing")
             cache_usage_data["cache_mode"] = "gemini_explicit"
             cache_usage_data["cache_paid"] = True
             # 新規作成（登録=書込）ターンか、再利用（読込ヒット）ターンかを区別する。
@@ -4047,6 +4317,10 @@ def agent_node(state: AgentState):
         elif cache_usage_data and "gemini" in str(state.get("model_name", "")).lower():
             cache_usage_data["cache_mode"] = "gemini_implicit"
         token_data.update(cache_usage_data)
+        if token_data.get("usage_status") == "missing":
+            token_data["record_missing_usage"] = True
+        if gemini_connection_config.get("backend") == "vertex":
+            token_data.update(is_paid=True, billing_backend="vertex", connection_id=signature_connection_id)
         try:
             import usage_ledger
             source = "autonomous" if state.get("autonomous_action") else "chat"
@@ -4167,6 +4441,8 @@ def agent_node(state: AgentState):
             print(f"--- [警告] agent_nodeでOpenAIエラーを捕捉しました: {e} ---")
             raise e
     except Exception as e:
+        if _is_lite_request_stopped(e):
+            raise
         is_429 = _is_agent_resource_exhausted_error(e)
         is_503 = _is_agent_service_unavailable_error(e, is_429=is_429)
         if is_429 or is_503:
@@ -4210,6 +4486,7 @@ def _execute_single_tool_inner(state: AgentState, tool_call: dict, current_signa
     """
     内部ヘルパー: 単一のツールコールを処理し、ToolMessageを返す。
     """
+    _checkpoint_lite_scope()
     import signature_manager
     tool_name = tool_call["name"]
     tool_args = tool_call["args"].copy()
@@ -4255,8 +4532,11 @@ def _execute_single_tool_inner(state: AgentState, tool_call: dict, current_signa
             if not selected_tool:
                 output = f"Error: Tool '{tool_name}' not found."
             else:
+                _checkpoint_lite_scope()
                 output = selected_tool.invoke(tool_args)
         except Exception as e:
+            if _is_lite_request_stopped(e):
+                raise
             output = f"ワーキングメモリの操作中にエラーが発生しました ('{tool_name}'): {e}"
             traceback.print_exc()
 
@@ -4351,11 +4631,11 @@ def _execute_single_tool_inner(state: AgentState, tool_call: dict, current_signa
             # 創作ノートは追記専用で、既存本文を参照せず modification_request だけを保存する。
             # 過去の創作記録を同じ処理コンテキストへ載せると、書記モデルが旧記述を今回の
             # 本文へ混入させ、古い出来事を現在の事実として再生成する原因になる。
-            raw_content = (
-                ""
-                if is_plan_creative_notes
-                else read_tool.invoke({"room_name": room_name})
-            )
+            if is_plan_creative_notes:
+                raw_content = ""
+            else:
+                _checkpoint_lite_scope()
+                raw_content = read_tool.invoke({"room_name": room_name})
 
             if is_plan_identity_memory or is_plan_secret_diary or is_plan_notepad or is_plan_creative_notes or is_plan_research_notes:
                 lines = raw_content.split('\n')
@@ -4684,6 +4964,8 @@ def _execute_single_tool_inner(state: AgentState, tool_call: dict, current_signa
                 output = f"【失敗】{output}"
 
         except Exception as e:
+            if _is_lite_request_stopped(e):
+                raise
             output = f"【失敗】ファイル編集プロセス中にエラーが発生しました ('{tool_name}'): {e}"
             traceback.print_exc()
     else:
@@ -4951,8 +5233,13 @@ def _execute_single_tool_inner(state: AgentState, tool_call: dict, current_signa
 
             # LLMが文字列フィールドに空dict/空list/Noneを渡す定番ミスを補正してから実行する。
             tool_args = _coerce_tool_args_for_schema(selected_tool, tool_args)
-            try: output = selected_tool.invoke(tool_args)
+            try:
+                _checkpoint_lite_scope()
+                output = selected_tool.invoke(tool_args)
+                _checkpoint_lite_scope()
             except Exception as e:
+                if _is_lite_request_stopped(e):
+                    raise
                 output = f"Error executing tool '{tool_name}': {e}"
                 traceback.print_exc()
 
@@ -5030,12 +5317,16 @@ def _execute_single_tool_inner(state: AgentState, tool_call: dict, current_signa
                 )
             if "world" in _cap_categories and room_name:
                 from tools.space_tools import list_available_locations as _list_locs
+                _checkpoint_lite_scope()
                 _locs_result = _list_locs.invoke({"room_name": room_name})
+                _checkpoint_lite_scope()
                 tool_message_content += f"\n\n{_locs_result}"
                 print(f"  - [Capability Enrichment] world カテゴリに場所リストを自動付加しました")
             if "items" in _cap_categories and room_name:
                 from tools.item_tools import list_my_items as _list_items
+                _checkpoint_lite_scope()
                 _inv_result = _list_items.invoke({"room_name": room_name})
+                _checkpoint_lite_scope()
                 tool_message_content += f"\n\n【あなたの現在の所持アイテム】\n{_inv_result}\n※既に持っているアイテムがあれば、新規作成せずにそれを使ってください。"
                 print(f"  - [Capability Enrichment] items カテゴリに所持品リストを自動付加しました")
             if "agent_delegation" in _cap_categories and room_name:
@@ -5053,6 +5344,8 @@ def _execute_single_tool_inner(state: AgentState, tool_call: dict, current_signa
                 )
                 print("  - [Capability Enrichment] music カテゴリに推薦ツール案内を自動付加しました")
         except Exception as _enrich_err:
+            if _is_lite_request_stopped(_enrich_err):
+                raise
             print(f"  - [Capability Enrichment] 補助情報付加エラー（無視）: {_enrich_err}")
 
     try:
@@ -5138,6 +5431,7 @@ def safe_tool_executor(state: AgentState):
     AIのツール呼び出しを仲介し、計画されたファイル編集タスクを実行する。
     LLMが1ターンに複数のツールを要請した場合、ここでループ処理して一括で応答を返す。
     """
+    _checkpoint_lite_scope()
     import signature_manager
 
     print("--- ツール実行ノード (safe_tool_executor) 実行 ---")
@@ -5146,7 +5440,12 @@ def safe_tool_executor(state: AgentState):
         return {}
 
     # --- [Dual-State] 最新の署名を取得 ---
-    current_signature = signature_manager.get_thought_signature(state.get('room_name', ''))
+    current_signature = signature_manager.get_thought_signature(
+        state.get('room_name', ''),
+        model_name=state.get('model_name', ''),
+        connection_id=gemini_connection.connection_id(_gemini_connection_for_state(state)),
+    )
+    signature_by_tool_id = tool_signature_map(current_signature, last_message.tool_calls)
 
     tool_messages = []
     tool_use_enabled = state.get("tool_use_enabled", True)
@@ -5161,6 +5460,7 @@ def safe_tool_executor(state: AgentState):
     ))
 
     for tool_call in last_message.tool_calls:
+        _checkpoint_lite_scope()
         tool_name = tool_call["name"]
         if tool_name != "request_capability":
             consumed_non_broker_tool = True
@@ -5207,7 +5507,9 @@ def safe_tool_executor(state: AgentState):
                     "api_key": state.get('api_key')
                 }
 
+                _checkpoint_lite_scope()
                 tool_msg_dict = sub_agent_executor(fake_state)
+                _checkpoint_lite_scope()
                 tool_msg_list = tool_msg_dict.get("messages", [])
 
                 if tool_msg_list:
@@ -5217,7 +5519,13 @@ def safe_tool_executor(state: AgentState):
                 else:
                     tool_messages.append(ToolMessage(content="サブエージェント委譲に失敗しました。", tool_call_id=tool_call["id"], name=tool_name))
             else:
-                msg = _execute_single_tool_inner(state, tool_call, current_signature)
+                _checkpoint_lite_scope()
+                msg = _execute_single_tool_inner(
+                    state,
+                    tool_call,
+                    signature_by_tool_id.get(tool_call.get("id")),
+                )
+                _checkpoint_lite_scope()
                 tool_messages.append(msg)
                 if msg.name == "request_capability":
                     args = tool_call.get("args") or {}
@@ -5239,6 +5547,8 @@ def safe_tool_executor(state: AgentState):
                     autonomy_finalization_reason = f"{tool_name} succeeded during autonomy timeline"
                     print("  - [Autonomy Finalize] 更新成功を検知。次ターンはReflect/Timeline完了を優先します。")
         except Exception as e:
+            if _is_lite_request_stopped(e):
+                raise
             print(f"  - ツール実行全体エラー ({tool_name}): {e}")
             import traceback
             traceback.print_exc()
@@ -5254,6 +5564,7 @@ def safe_tool_executor(state: AgentState):
     elif capability_request_pending:
         pending_capability_followup = capability_request_pending
 
+    _checkpoint_lite_scope()
     return {
         "messages": tool_messages,
         "loop_count": loop_count,
@@ -5269,6 +5580,7 @@ def supervisor_node(state: AgentState):
     会話の管理者ノード。
     次に誰が発言するか、またはユーザーにターンを戻すか（FINISH）を決定する。
     """
+    _checkpoint_lite_scope()
     # [Seal] 配布優先のため、司会AI機能は現在強制的にスキップされます
     if not state.get("enable_supervisor", False):
         next_agent = state.get("room_name")
@@ -5334,8 +5646,12 @@ def supervisor_node(state: AgentState):
             recent_messages = [HumanMessage(content="（会話開始）")]
 
         try:
+            _checkpoint_lite_scope()
             response = supervisor_llm.invoke([HumanMessage(content=system_prompt)] + recent_messages)
+            _checkpoint_lite_scope()
         except Exception as e:
+            if _is_lite_request_stopped(e):
+                raise
             err_str = str(e).upper()
             if isinstance(e, google_exceptions.ResourceExhausted) or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                 model_name_for_err = getattr(supervisor_llm, "model_name", getattr(supervisor_llm, "model", "gemini-2.1-flash-lite"))
@@ -5384,6 +5700,8 @@ def supervisor_node(state: AgentState):
         print(f"  - Supervisorの決定: {next_speaker}", flush=True)
 
     except Exception as e:
+        if _is_lite_request_stopped(e):
+            raise
         print(f"  - Supervisor重大エラー: {e}", flush=True)
         import traceback
         traceback.print_exc()
@@ -5400,8 +5718,13 @@ def supervisor_node(state: AgentState):
         next_speaker,
         global_model_from_ui=state.get("generation_config", {}).get("global_model_from_ui")
     )
-    new_api_key_name = config_manager.get_active_gemini_api_key_name(next_speaker)
-    new_api_key = config_manager.GEMINI_API_KEYS.get(new_api_key_name)
+    next_connection = _gemini_connection_for_state({"room_name": next_speaker})
+    if next_connection.get("backend") == "vertex":
+        new_api_key_name = None
+        new_api_key = None
+    else:
+        new_api_key_name = config_manager.get_active_gemini_api_key_name(next_speaker)
+        new_api_key = config_manager.GEMINI_API_KEYS.get(new_api_key_name)
 
     # 発言済みリストを更新
     updated_speakers = speakers_this_turn + [next_speaker]
@@ -5416,7 +5739,8 @@ def supervisor_node(state: AgentState):
         "model_name": new_effective_settings.get("model_name"),
         "api_key": new_api_key,
         "api_key_name": new_api_key_name,
-        "generation_config": new_effective_settings
+        "generation_config": new_effective_settings,
+        "_gemini_connection": next_connection,
     }
 
 def _should_remind_pending_capability(state: AgentState) -> bool:
@@ -5433,6 +5757,7 @@ def _should_remind_pending_capability(state: AgentState) -> bool:
 
 
 def capability_followup_node(state: AgentState):
+    _checkpoint_lite_scope()
     pending = dict(state.get("pending_capability_followup") or {})
     intent = str(pending.get("intent") or "").strip()
     category = str(pending.get("category") or "").strip()

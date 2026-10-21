@@ -3,6 +3,22 @@ import subprocess
 import sys
 import logging
 import traceback
+import os
+
+from playwright_node import prepare_playwright_node
+
+def sync_playwright():
+    """同期driverを起動する直前に修正版Nodeを固定する。"""
+    prepare_playwright_node()
+    from playwright.sync_api import sync_playwright as factory
+    return factory()
+
+def async_playwright():
+    """非同期driverにも同じ検証境界を適用する。"""
+    prepare_playwright_node()
+    from playwright.async_api import async_playwright as factory
+    return factory()
+
 
 logger = logging.getLogger("playwright_utils")
 
@@ -18,6 +34,9 @@ def ensure_playwright_browsers(browser_type: str = "chromium") -> bool:
         bool: インストールに成功（または既に存在）した場合は True、失敗した場合は False
     """
     try:
+        node = prepare_playwright_node()
+        env = os.environ.copy()
+        env["PLAYWRIGHT_NODEJS_PATH"] = node
         # まずはインストールを試行（Playwright側で既存チェックが行われるため、
         # 明示的な存在チェックより install コマンドを呼ぶ方が確実）
         logger.info(f"Playwrightのブラウザ ({browser_type}) を確認/インストール中...")
@@ -31,7 +50,8 @@ def ensure_playwright_browsers(browser_type: str = "chromium") -> bool:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            check=True
+            check=True,
+            env=env
         )
         
         logger.info(f"Playwrightブラウザのセットアップが完了しました: {browser_type}")

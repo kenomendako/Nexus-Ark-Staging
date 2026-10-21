@@ -1,19 +1,45 @@
 import os
 import logging
 import json
+import functools
+import platform
 import shutil
 import subprocess
 import urllib.parse
 import uuid
 import hashlib
 from pathlib import Path
+from filelock import Timeout
+from tuf.api.exceptions import BadVersionNumberError
 from tufup.client import Client
+from file_lock_utils import get_file_lock
 from runtime_tuf import RuntimeTargetClient
 from update_host.contracts import is_python_bytecode_cache, validate_release_tree
 from update_host.runtime import validate_bound_runtime
 from version_manager import VersionManager
 
 logger = logging.getLogger(__name__)
+
+
+LEGACY_MIGRATION_HOST_FILES = (
+    "__init__.py",
+    "contracts.py",
+    "runtime.py",
+    "runtime_archive.py",
+    "transaction.py",
+    "trial.py",
+    "supervisor.py",
+)
+
+_UPDATE_HOST_MESSAGES = {
+    "not_required": "この環境では保護更新hostの移行は必要ありません。",
+    "ready": "保護された更新hostが準備済みです。",
+    "migration_required": "新しい更新方式への移行が必要です。共通の本体更新画面から移行を準備してください。",
+    "migration_required_unavailable": "新しい更新方式への移行が必要ですが、署名済みの移行ファイルを確認できません。完全配布パッケージから復旧してください。",
+    "migration_pending": "更新方式の移行準備中です。Nexus Arkを終了し、ランチャーの完了を待ってから再起動してください。",
+    "migration_blocked": "更新hostの復旧状態を確認できません。Nexus Arkを再起動し、状態を確認してください。",
+    "migration_lock": "別の更新方式移行が準備中です。完了を待ってから再試行してください。",
+}
 
 
 def _legacy_migration_creation_flags():
@@ -24,6 +50,318 @@ def _legacy_migration_creation_flags():
         getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         | getattr(subprocess, "CREATE_NO_WINDOW", 0)
     )
+
+
+def _module_project_root():
+    """update_manager.pyの配置から、照会対象のプロジェクトrootを導出する。"""
+
+    module_dir = Path(__file__).resolve().parent
+    return module_dir.parent if module_dir.name == "app" else module_dir
+
+
+def _path_present(path):
+    """存在する通常ファイルだけでなく、dangling symlinkも検出する。"""
+
+    candidate = Path(path)
+    return candidate.exists() or candidate.is_symlink()
+
+
+def _safe_regular_file(path, parent=None):
+    """symlinkを経由しない通常ファイルか、軽量に確認する。"""
+
+    candidate = Path(path).absolute()
+    if candidate.is_symlink() or not candidate.is_file():
+        return False
+    if parent is None:
+        return True
+    root = Path(parent).absolute()
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError:
+        return False
+    current = root
+    if current.is_symlink() or not current.is_dir():
+        return False
+    for part in relative.parts[:-1]:
+        current = current / part
+        if current.is_symlink() or not current.is_dir():
+            return False
+    return True
+
+
+def _read_small_json_object(path, *, max_bytes=64 * 1024):
+    """更新状態の照会用に、小さなJSON記録だけを読む。"""
+
+    candidate = Path(path)
+    if candidate.is_symlink() or not candidate.is_file():
+        return None
+    try:
+        if candidate.stat().st_size > max_bytes:
+            return None
+        # Windows PowerShell 5.1のSet-Content -Encoding UTF8はBOMを付ける。
+        # Python生成の記録もそのまま受理できるよう、先頭BOMだけを許容する。
+        payload = json.loads(candidate.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _migration_record_is_safe(stage, *, verify_staged_files=False):
+    """移行helperが扱うrecordの形だけを軽量に確認する。"""
+
+    stage = Path(stage).absolute()
+    record_path = stage / "record.json"
+    if not _safe_regular_file(record_path, stage):
+        return None
+    record = _read_small_json_object(record_path)
+    if record is None:
+        return None
+    operation_id = record.get("operation_id")
+    if not isinstance(operation_id, str) or not operation_id or operation_id != stage.name:
+        return None
+    schema_version = record.get("schema_version", 1)
+    if isinstance(schema_version, bool) or schema_version != 1:
+        return None
+    files = record.get("files")
+    if not isinstance(files, list) or not files:
+        return None
+    for entry in files:
+        if not isinstance(entry, dict):
+            return None
+        relative = entry.get("path")
+        digest = entry.get("sha256")
+        if not isinstance(relative, str) or not relative:
+            return None
+        normalized = relative.replace("\\", "/")
+        if (
+            normalized.startswith("/")
+            or normalized.startswith("../")
+            or "/../" in normalized
+            or normalized == ".."
+            or (len(normalized) >= 2 and normalized[1] == ":")
+        ):
+            return None
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(character not in "0123456789abcdefABCDEF" for character in digest)
+        ):
+            return None
+        if verify_staged_files and not _safe_regular_file(stage / Path(normalized), stage):
+            return None
+    return record
+
+
+def _inspect_legacy_migration_stages(recovery_dir):
+    """移行stagingの状態を ``pending`` / ``complete`` / ``blocked`` で返す。"""
+
+    migration_root = Path(recovery_dir) / "legacy-host-migration"
+    if not _path_present(migration_root):
+        return None
+    if migration_root.is_symlink() or not migration_root.is_dir():
+        return "blocked"
+    try:
+        entries = list(migration_root.iterdir())
+    except OSError:
+        return "blocked"
+    pending = False
+    for stage in entries:
+        if stage.is_symlink() or not stage.is_dir():
+            return "blocked"
+        record = _migration_record_is_safe(stage)
+        if record is None:
+            return "blocked"
+        result_path = stage / "result.json"
+        if not _path_present(result_path):
+            if _migration_record_is_safe(stage, verify_staged_files=True) is None:
+                return "blocked"
+            pending = True
+            continue
+        result = _read_small_json_object(result_path)
+        if result is None:
+            return "blocked"
+        result_state = result.get("state")
+        if result_state not in ("complete", "failed"):
+            return "blocked"
+        result_operation_id = result.get("operation_id")
+        if result_state == "complete" and result_operation_id != record["operation_id"]:
+            return "blocked"
+        if result_operation_id is not None and result_operation_id != record["operation_id"]:
+            return "blocked"
+        if result_state == "failed":
+            return "blocked"
+    if pending:
+        return "pending"
+    return "complete" if entries else None
+
+
+def _inspect_transaction_state(recovery_dir):
+    """更新transactionの存在とphaseだけを副作用なしで確認する。"""
+
+    recovery = Path(recovery_dir)
+    lock = recovery / "transaction.lock"
+    if _path_present(lock):
+        return "blocked"
+    journal = recovery / "transaction.json"
+    if not _path_present(journal):
+        return None
+    payload = _read_small_json_object(journal)
+    if payload is None:
+        return "blocked"
+    phase = payload.get("phase")
+    if phase not in ("committed", "rolled_back"):
+        return "blocked"
+    return None
+
+
+def _inspect_update_host_layout(root):
+    """updaterの部分配置を検出する。戻り値は ``(blocked, current_present)``。"""
+
+    root = Path(root).absolute()
+    updater = root / "updater"
+    updater_next = root / "updater.next"
+    if _path_present(updater_next):
+        return True, False
+    if not _path_present(updater):
+        return False, False
+    if updater.is_symlink() or not updater.is_dir():
+        return True, False
+    current = updater / "current"
+    if not _path_present(current):
+        try:
+            return (any(updater.iterdir()), False)
+        except OSError:
+            return True, False
+    if current.is_symlink() or not current.is_dir():
+        return True, True
+    supervisor = current / "update_host" / "supervisor.py"
+    if not _safe_regular_file(supervisor, current):
+        return True, True
+    return False, True
+
+
+def _launcher_uses_protected_host(root):
+    """Start.batが新hostへ切替済みなのに配置が不足する状態を検出する。"""
+
+    start = Path(root) / "Start.bat"
+    if not _safe_regular_file(start, Path(root)):
+        return False
+    try:
+        launcher = start.read_text(encoding="utf-8-sig", errors="strict").lower()
+    except (OSError, UnicodeError):
+        return False
+    return "update_host.supervisor" in launcher
+
+
+def _migration_source_available(root):
+    """移行準備の入力が存在するかだけを確認する（完全検証はprepare側で行う）。"""
+
+    root = Path(root).absolute()
+    app = root / "app"
+    if app.is_symlink() or not app.is_dir():
+        return False
+    required = [
+        root / "Start.bat",
+        app / "release_manifest.json",
+        app / "pyproject.toml",
+        app / "uv.lock",
+        app / "release" / "update_host_bridge" / "Start.bat",
+        app / "release" / "update_host_bridge" / "ApplyLegacyHostMigration.ps1",
+    ]
+    required.extend(app / "update_host" / name for name in LEGACY_MIGRATION_HOST_FILES)
+    return all(_safe_regular_file(path, app if path.is_relative_to(app) else root) for path in required)
+
+
+def inspect_update_host_status(project_root=None):
+    """更新hostの準備状態を、書込みなしで照会する。
+
+    戻り値はUIが安全に扱える ``state`` / ``can_prepare`` / ``message`` の3キーだけを
+    持つ。署名manifestの完全検証や移行stagingの作成は、この関数では行わない。
+    """
+
+    if platform.system() != "Windows":
+        return {
+            "state": "not_required",
+            "can_prepare": False,
+            "message": _UPDATE_HOST_MESSAGES["not_required"],
+        }
+    root = Path(project_root).absolute() if project_root is not None else _module_project_root()
+    recovery = root / "update_recovery"
+    if recovery.is_symlink() or (_path_present(recovery) and not recovery.is_dir()):
+        return {
+            "state": "migration_blocked",
+            "can_prepare": False,
+            "message": _UPDATE_HOST_MESSAGES["migration_blocked"],
+        }
+    transaction_state = _inspect_transaction_state(recovery)
+    migration_state = _inspect_legacy_migration_stages(recovery)
+    layout_blocked, current_present = _inspect_update_host_layout(root)
+    if transaction_state == "blocked" or migration_state == "blocked" or layout_blocked:
+        return {
+            "state": "migration_blocked",
+            "can_prepare": False,
+            "message": _UPDATE_HOST_MESSAGES["migration_blocked"],
+        }
+    if migration_state == "pending":
+        return {
+            "state": "migration_pending",
+            "can_prepare": False,
+            "message": _UPDATE_HOST_MESSAGES["migration_pending"],
+        }
+    if protected_update_host_ready(root):
+        return {
+            "state": "ready",
+            "can_prepare": False,
+            "message": _UPDATE_HOST_MESSAGES["ready"],
+        }
+    if (
+        current_present
+        or migration_state == "complete"
+        or _launcher_uses_protected_host(root)
+    ):
+        return {
+            "state": "migration_blocked",
+            "can_prepare": False,
+            "message": _UPDATE_HOST_MESSAGES["migration_blocked"],
+        }
+    can_prepare = _migration_source_available(root)
+    return {
+        "state": "migration_required",
+        "can_prepare": can_prepare,
+        "message": (
+            _UPDATE_HOST_MESSAGES["migration_required"]
+            if can_prepare
+            else _UPDATE_HOST_MESSAGES["migration_required_unavailable"]
+        ),
+    }
+
+
+def _serialize_legacy_migration_prepare(method):
+    """同一rootのUIから移行準備を二重起動しない。"""
+
+    @functools.wraps(method)
+    def wrapped(self, *args, **kwargs):
+        if platform.system() != "Windows":
+            return method(self, *args, **kwargs)
+        initial_status = self.update_host_status()
+        if (
+            initial_status["state"] != "migration_required"
+            or not initial_status["can_prepare"]
+        ):
+            return method(self, *args, **kwargs)
+        recovery = Path(self.project_root) / "update_recovery"
+        try:
+            recovery.mkdir(parents=True, exist_ok=True)
+            lock = get_file_lock(str(recovery / "legacy-host-migration"), timeout=0)
+            with lock:
+                return method(self, *args, **kwargs)
+        except Timeout:
+            return False, _UPDATE_HOST_MESSAGES["migration_lock"]
+        except OSError as exc:
+            logger.error("Legacy migration lock failed: %s", type(exc).__name__)
+            return False, "更新方式の移行を安全に準備できませんでした。"
+
+    return wrapped
 
 
 def protected_update_host_ready(project_root):
@@ -293,6 +631,11 @@ class UpdateManager:
 
         return legacy_overlay_allowed(self.project_root)
 
+    def update_host_status(self):
+        """副作用のない共通更新host照会へ委譲する。"""
+
+        return inspect_update_host_status(self.project_root)
+
     def runtime_repair_mode(self):
         """現在版を差し替えずに選べるruntime復旧境界を返す。"""
 
@@ -334,6 +677,7 @@ class UpdateManager:
             return "signed_update_required"
         return "ready"
 
+    @_serialize_legacy_migration_prepare
     def prepare_legacy_update_host_migration(self):
         """署名済みappから旧launcherの一度限りの移行を終了待ちhelperへ渡す。"""
 
@@ -341,8 +685,11 @@ class UpdateManager:
 
         if platform.system() != "Windows":
             return False, "この環境では更新方式の移行を開始できません。"
-        if self.runtime_repair_mode() != "legacy_update_host_migration_required":
-            return False, "現在の環境では更新方式の移行は必要ありません。"
+        host_status = self.update_host_status()
+        if host_status["state"] != "migration_required":
+            return False, host_status["message"]
+        if not host_status["can_prepare"]:
+            return False, host_status["message"]
         try:
             self._remove_generated_app_bytecode()
             validate_release_tree(
@@ -356,15 +703,7 @@ class UpdateManager:
             start_source = bridge_source / "Start.bat"
             apply_source = bridge_source / "ApplyLegacyHostMigration.ps1"
             host_source = self.install_dir / "update_host"
-            required_host = (
-                "__init__.py",
-                "contracts.py",
-                "runtime.py",
-                "runtime_archive.py",
-                "transaction.py",
-                "trial.py",
-                "supervisor.py",
-            )
+            required_host = LEGACY_MIGRATION_HOST_FILES
             source_files = [start_source, apply_source]
             source_files.extend(host_source / name for name in required_host)
             source_files.extend(
@@ -604,6 +943,12 @@ class UpdateManager:
             new_archive_meta = self.client.check_for_updates()
         except Exception as exc:
             logger.error("Failed to check for updates: %s", type(exc).__name__)
+            if isinstance(exc, BadVersionNumberError):
+                return {
+                    "state": "check_failed",
+                    "version": None,
+                    "error_code": "metadata_version_mismatch",
+                }
             return {"state": "check_failed", "version": None}
         if new_archive_meta:
             version = str(new_archive_meta.version)
@@ -648,13 +993,17 @@ class UpdateManager:
         if not self.is_configured():
             return False, "更新システムが構成されていません。"
 
+        if platform.system() == "Windows":
+            host_status = self.update_host_status()
+            if host_status["state"] != "ready":
+                return False, host_status["message"]
+
         if require_runtime:
             blocked = self._runtime_repair_block_reason()
             if blocked:
                 return False, blocked
 
         try:
-            import platform
             if platform.system() == "Windows":
                 self._ensure_staging_root()
                 if self.app_staging_dir.is_dir():

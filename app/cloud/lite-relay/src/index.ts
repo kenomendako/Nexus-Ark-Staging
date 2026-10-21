@@ -25,6 +25,7 @@ import {
 import {
   changePersonaRoute,
   disableProviderProfile,
+  listProviderRegistrationOptions,
   listSafeProviderProfiles,
   upsertProviderProfile,
 } from "./phase2-routing";
@@ -107,7 +108,7 @@ const coreHandler = {
         api_schema_version: API_SCHEMA_VERSION,
         snapshot_schema_range: { min: 1, max: 4 },
         bundle_schema_range: { min: 1, max: 4 },
-        pwa_schema_version: 9,
+        pwa_schema_version: 10,
         ...storage,
         capabilities: WORKER_API_CATALOG,
       });
@@ -179,8 +180,37 @@ const coreHandler = {
     }
 
     const owner = hasOwnerToken(request, env.OWNER_AUTH_TOKEN, env.OWNER_AUTH_TOKEN_NEXT);
+    if (request.method === "GET" && url.pathname === "/v1/provider-profile-registration-options") {
+      if (!owner) return json({ error: "unauthorized" }, 401);
+      try {
+        return json(await listProviderRegistrationOptions(env.DB));
+      } catch {
+        return json({ error: "provider_registration_options_unavailable" }, 503);
+      }
+    }
     if (request.method === "POST" && url.pathname === "/v1/pairing-codes") {
-      return owner ? json(await createPairingCode(env.DB, now), 201) : json({ error: "unauthorized" }, 401);
+      if (!owner) return json({ error: "unauthorized" }, 401);
+      let body: unknown = {};
+      const rawBody = await request.text();
+      if (rawBody.trim()) {
+        try {
+          body = JSON.parse(rawBody);
+        } catch {
+          return json({ error: "invalid_pairing_ttl" }, 400);
+        }
+      }
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        return json({ error: "invalid_pairing_ttl" }, 400);
+      }
+      const ttlMinutes = (body as Record<string, unknown>).ttl_minutes;
+      try {
+        return json(await createPairingCode(env.DB, now, ttlMinutes), 201);
+      } catch (error) {
+        if (errorCode(error) === "invalid_pairing_ttl") {
+          return json({ error: "invalid_pairing_ttl" }, 400);
+        }
+        throw error;
+      }
     }
     if (request.method === "POST" && url.pathname === "/v1/travel-sessions") {
       if (!owner) return json({ error: "unauthorized" }, 401);

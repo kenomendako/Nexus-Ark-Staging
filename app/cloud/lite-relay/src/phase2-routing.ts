@@ -1,5 +1,9 @@
 import { canonicalJson, sha256 } from "./auth";
-import { secretBindingMetadata, type SecretBindingId } from "./security";
+import {
+  listSecretBindingRegistrationMetadata,
+  secretBindingMetadata,
+  type SecretBindingId,
+} from "./security";
 import { getActiveMessageRequest, nextSequenceNumber } from "./storage";
 import type { Provider } from "./types";
 
@@ -23,6 +27,20 @@ export interface SafeProviderProfile {
   provider: Provider;
   allowed_base_url_id: string;
   enabled: boolean;
+}
+
+export interface ProviderRegistrationOptionSlot {
+  secret_binding_id: SecretBindingId;
+  credential_profile_id: string;
+  display_name: string;
+  registered_profile_id: string | null;
+}
+
+export interface ProviderRegistrationOptions {
+  providers: Array<{
+    provider: Provider;
+    slots: ProviderRegistrationOptionSlot[];
+  }>;
 }
 
 export interface PersonaRoute {
@@ -76,6 +94,39 @@ export async function listSafeProviderProfiles(db: D1Database): Promise<SafeProv
     )
     .all<ProviderProfileRow>();
   return result.results.map(safeProfile);
+}
+
+/**
+ * 所有者がSecret登録前にbinding/profileの対応と既存所有を確認するための正本metadata。
+ * Secret値は返さず、登録済みbindingのprofile IDだけを所有者向けに付加する。
+ */
+export async function listProviderRegistrationOptions(db: D1Database): Promise<ProviderRegistrationOptions> {
+  const owners = await db
+    .prepare("SELECT credential_profile_id, secret_binding_id FROM provider_profiles")
+    .all<{ credential_profile_id: string; secret_binding_id: string }>();
+  const ownerByBinding = new Map<string, string>();
+  for (const row of owners.results) {
+    if (row.secret_binding_id && row.credential_profile_id) {
+      ownerByBinding.set(row.secret_binding_id, row.credential_profile_id);
+    }
+  }
+
+  const providers = new Map<Provider, ProviderRegistrationOptionSlot[]>();
+  for (const item of listSecretBindingRegistrationMetadata()) {
+    const slots = providers.get(item.provider) ?? [];
+    slots.push({
+      secret_binding_id: item.secretBindingId,
+      credential_profile_id: item.credentialProfileId,
+      display_name: item.displayName,
+      registered_profile_id: ownerByBinding.get(item.secretBindingId) ?? null,
+    });
+    providers.set(item.provider, slots);
+  }
+  return {
+    providers: [...providers.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([provider, slots]) => ({ provider, slots })),
+  };
 }
 
 export async function upsertProviderProfile(

@@ -28,6 +28,11 @@ from urllib.parse import quote, urlsplit
 
 import constants
 import file_lock_utils
+from lite_development_runtime import (
+    LiteDevelopmentRuntimeError,
+    LiteDevelopmentRuntimePaths,
+    resolve_lite_development_runtime,
+)
 from lite_runtime import LiteRuntimeError, LiteRuntimePaths, resolve_lite_runtime
 from update_host.contracts import is_python_bytecode_cache, validate_release_tree
 from update_host.runtime import validate_bound_runtime
@@ -35,7 +40,7 @@ from update_manager import legacy_overlay_allowed, protected_update_host_ready
 
 
 MINIMUM_NODE_MAJOR = 22
-EXPECTED_WRANGLER_VERSION = "4.118.0"
+EXPECTED_WRANGLER_VERSION = "4.149.0"
 REQUIRED_BOOTSTRAP_SECRETS = (
     "OWNER_AUTH_TOKEN",
     "BUNDLE_SIGNING_KEY",
@@ -162,6 +167,16 @@ _ALLOWED_FAILURE_CODES = frozenset(
         "pairing_failed",
         "standby_prepare_failed",
         "bundled_runtime_unavailable",
+        "development_runtime_path_not_absolute",
+        "development_runtime_source_required",
+        "development_runtime_node_missing",
+        "development_runtime_relay_resources_missing",
+        "development_runtime_lock_mismatch",
+        "development_runtime_entrypoint_missing",
+        "development_runtime_node_version_unavailable",
+        "development_runtime_node_22_required",
+        "development_runtime_wrangler_version_unavailable",
+        "development_runtime_wrangler_version_mismatch",
         "runtime_prepare_confirmation_required",
     }
 )
@@ -241,7 +256,7 @@ def _command_runtime(
     *,
     node_command: str | Path | None,
     runner: Callable[..., Any],
-) -> tuple[str, Path, Path, LiteRuntimePaths | None]:
+) -> tuple[str, Path, Path, LiteRuntimePaths | LiteDevelopmentRuntimePaths | None]:
     """製品では同梱runtime、明示注入時だけ合成／開発commandを返す。"""
 
     if isinstance(node_command, _ResolvedRuntimeNode):
@@ -253,6 +268,22 @@ def _command_runtime(
             relay / "node_modules" / "wrangler" / "bin" / "wrangler.js",
             relay / "node_modules" / "wrangler" / "wrangler-dist" / "cli.js",
             None,
+        )
+    try:
+        development = resolve_lite_development_runtime(
+            relay,
+            runner=runner,
+            expected_wrangler_version=EXPECTED_WRANGLER_VERSION,
+            required_relay_files=REQUIRED_RELAY_FILES,
+        )
+    except LiteDevelopmentRuntimeError as exc:
+        raise LiteCloudSetupError(str(exc), failure_code=exc.failure_code) from exc
+    if development is not None:
+        return (
+            str(development.node),
+            development.wrangler,
+            development.wrangler_cli,
+            development,
         )
     try:
         runtime = resolve_lite_runtime(
@@ -274,7 +305,7 @@ def resolve_lite_command_runtime(
     *,
     node_command: str | Path | None = None,
     runner: Callable[..., Any] = subprocess.run,
-) -> tuple[str, Path, Path, LiteRuntimePaths | None]:
+) -> tuple[str, Path, Path, LiteRuntimePaths | LiteDevelopmentRuntimePaths | None]:
     """Lite command用entry pointを返す。製品既定では検証済みruntimeだけを許可する。"""
 
     return _command_runtime(Path(relay), node_command=node_command, runner=runner)
@@ -500,9 +531,100 @@ def _registry_reachable() -> bool:
         return False
 
 
+def _strip_jsonc_comments(text: str) -> str:
+    """JSONCのコメントを空白へ置換し、文字列中の ``//`` は保持する。"""
+
+    output: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    in_line_comment = False
+    in_block_comment = False
+    while index < len(text):
+        char = text[index]
+        next_char = text[index + 1] if index + 1 < len(text) else ""
+        if in_line_comment:
+            if char in "\r\n":
+                in_line_comment = False
+                output.append(char)
+            else:
+                output.append(" ")
+            index += 1
+            continue
+        if in_block_comment:
+            if char == "*" and next_char == "/":
+                output.extend((" ", " "))
+                in_block_comment = False
+                index += 2
+            else:
+                output.append(char if char in "\r\n" else " ")
+                index += 1
+            continue
+        if in_string:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            output.append(char)
+            index += 1
+        elif char == "/" and next_char == "/":
+            output.extend((" ", " "))
+            in_line_comment = True
+            index += 2
+        elif char == "/" and next_char == "*":
+            output.extend((" ", " "))
+            in_block_comment = True
+            index += 2
+        else:
+            output.append(char)
+            index += 1
+    if in_block_comment:
+        raise ValueError("unterminated JSONC block comment")
+    return "".join(output)
+
+
+def _strip_jsonc_trailing_commas(text: str) -> str:
+    """JSONCの配列・オブジェクト末尾カンマを文字列外だけで除去する。"""
+
+    output: list[str] = []
+    index = 0
+    in_string = False
+    escaped = False
+    while index < len(text):
+        char = text[index]
+        if char == '"' and not escaped:
+            in_string = not in_string
+        if char == "," and not in_string:
+            lookahead = index + 1
+            while lookahead < len(text) and text[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(text) and text[lookahead] in "]}":
+                index += 1
+                continue
+        output.append(char)
+        if in_string and char == "\\" and not escaped:
+            escaped = True
+        else:
+            escaped = False
+        index += 1
+    return "".join(output)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
+    """JSON/JSONCを読み、設定ファイル以外の不正な値は空辞書にする。"""
+
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        if path.suffix.lower() == ".jsonc":
+            text = _strip_jsonc_trailing_commas(_strip_jsonc_comments(text))
+        value = json.loads(text)
     except (OSError, ValueError):
         return {}
     return value if isinstance(value, dict) else {}
@@ -532,12 +654,23 @@ def _run_version(command: list[str], *, runner: Callable[..., Any]) -> Optional[
 def _lock_contract(root: Path) -> dict[str, Any]:
     package = _read_json(root / "package.json")
     lock = _read_json(root / "package-lock.json")
-    package_version = str((package.get("devDependencies") or {}).get("wrangler") or "")
-    lock_root = ((lock.get("packages") or {}).get("") or {})
-    lock_version = str((lock_root.get("devDependencies") or {}).get("wrangler") or "")
-    installed_version = str(
-        (((lock.get("packages") or {}).get("node_modules/wrangler") or {}).get("version")) or ""
+    package_dependencies = package.get("devDependencies")
+    package_dependencies = (
+        package_dependencies if isinstance(package_dependencies, Mapping) else {}
     )
+    package_version = str(package_dependencies.get("wrangler") or "")
+    packages = lock.get("packages")
+    packages = packages if isinstance(packages, Mapping) else {}
+    lock_root = packages.get("")
+    lock_root = lock_root if isinstance(lock_root, Mapping) else {}
+    lock_dependencies = lock_root.get("devDependencies")
+    lock_dependencies = (
+        lock_dependencies if isinstance(lock_dependencies, Mapping) else {}
+    )
+    lock_version = str(lock_dependencies.get("wrangler") or "")
+    installed = packages.get("node_modules/wrangler")
+    installed = installed if isinstance(installed, Mapping) else {}
+    installed_version = str(installed.get("version") or "")
     exact = all(
         value == EXPECTED_WRANGLER_VERSION
         for value in (package_version, lock_version, installed_version)
@@ -551,6 +684,65 @@ def _lock_contract(root: Path) -> dict[str, Any]:
     }
 
 
+def _development_preflight_result(
+    *,
+    missing: list[str],
+    lock: Mapping[str, Any],
+    runtime: LiteDevelopmentRuntimePaths | None = None,
+    failure_code: str | None = None,
+) -> dict[str, Any]:
+    """明示opt-in開発runtimeの診断を、配布runtimeと同じallowlistで返す。"""
+
+    failure_codes = [failure_code] if failure_code else []
+    ready = runtime is not None and not missing and not failure_codes
+    state = "ready" if ready else "prerequisite_missing"
+    return {
+        "state": state,
+        "runtime_source": "development",
+        "development_runtime_ready": ready,
+        "bundled_runtime_ready": False,
+        "runtime_root": None,
+        "relay_resources_present": not missing,
+        "missing_resources": missing,
+        "node_available": runtime is not None,
+        "node_version": runtime.node_version if runtime else None,
+        "node_major": (
+            int(runtime.node_version.split(".", 1)[0]) if runtime else None
+        ),
+        "node_22_or_newer": runtime is not None,
+        "npm_available": False,
+        "network_checked": False,
+        "npm_registry_reachable": None,
+        "wrangler_lock_present": bool(lock.get("present")),
+        "wrangler_lock_exact": bool(lock.get("exact")),
+        "wrangler_expected_version": EXPECTED_WRANGLER_VERSION,
+        "wrangler_installed": runtime is not None,
+        "wrangler_version": runtime.wrangler_version if runtime else None,
+        "wrangler_ready": runtime is not None,
+        "failure_codes": failure_codes,
+        "external_changes_enabled": ready,
+    }
+
+
+def _resolve_development_preflight_runtime(
+    relay: Path,
+    *,
+    runner: Callable[..., Any],
+) -> tuple[LiteDevelopmentRuntimePaths | None, str | None]:
+    """開発envの選択をpreflightでも共有し、失敗を専用codeへ保持する。"""
+
+    try:
+        runtime = resolve_lite_development_runtime(
+            relay,
+            runner=runner,
+            expected_wrangler_version=EXPECTED_WRANGLER_VERSION,
+            required_relay_files=REQUIRED_RELAY_FILES,
+        )
+    except LiteDevelopmentRuntimeError as exc:
+        return None, exc.failure_code
+    return runtime, None
+
+
 def distribution_preflight(
     *,
     root: Optional[Path] = None,
@@ -560,7 +752,7 @@ def distribution_preflight(
     check_network: bool = True,
     require_wrangler: bool = True,
     use_bundled_runtime: bool = True,
-    _resolved_runtime: LiteRuntimePaths | None = None,
+    _resolved_runtime: LiteRuntimePaths | LiteDevelopmentRuntimePaths | None = None,
 ) -> dict[str, Any]:
     """配布版相当の前提を個別診断する。
 
@@ -572,6 +764,27 @@ def distribution_preflight(
     lock = _lock_contract(relay)
     bundled = use_bundled_runtime
     if bundled:
+        development = (
+            _resolved_runtime
+            if isinstance(_resolved_runtime, LiteDevelopmentRuntimePaths)
+            else None
+        )
+        if development is None:
+            development, development_failure = _resolve_development_preflight_runtime(
+                relay, runner=runner
+            )
+            if development_failure:
+                return _development_preflight_result(
+                    missing=missing,
+                    lock=lock,
+                    failure_code=development_failure,
+                )
+        if development is not None:
+            return _development_preflight_result(
+                missing=missing,
+                lock=lock,
+                runtime=development,
+            )
         runtime = _resolved_runtime
         runtime_failure = False
         if runtime is None:
@@ -590,6 +803,7 @@ def distribution_preflight(
         return {
             "state": state,
             "runtime_source": "bundled",
+            "development_runtime_ready": False,
             "bundled_runtime_ready": runtime is not None,
             "runtime_root": str(runtime.root) if runtime else None,
             "relay_resources_present": not missing,
@@ -650,6 +864,7 @@ def distribution_preflight(
     return {
         "state": state,
         "runtime_source": "injected",
+        "development_runtime_ready": False,
         "bundled_runtime_ready": False,
         "runtime_root": None,
         "relay_resources_present": not missing,
@@ -682,9 +897,35 @@ def bundled_runtime_status(
     """UI診断用にruntime自己検証と現在appのbindingを一組で確認する。"""
 
     relay = Path(root) if root is not None else relay_root()
+    development, development_failure = _resolve_development_preflight_runtime(
+        relay, runner=runner
+    )
+    if development_failure:
+        result = _development_preflight_result(
+            missing=[
+                name
+                for name in REQUIRED_RELAY_FILES
+                if not (relay / name).is_file()
+            ],
+            lock=_lock_contract(relay),
+            failure_code=development_failure,
+        )
+        return {**result, "app_runtime_binding_ready": False}
+    if development is not None:
+        result = distribution_preflight(
+            root=relay,
+            runner=runner,
+            check_network=False,
+            require_wrangler=True,
+            use_bundled_runtime=True,
+            _resolved_runtime=development,
+        )
+        return {**result, "app_runtime_binding_ready": result.get("state") == "ready"}
     if system().lower() != "windows" or machine().lower() not in {"amd64", "x86_64"}:
         return {
             "state": "unsupported_platform",
+            "runtime_source": "bundled",
+            "development_runtime_ready": False,
             "bundled_runtime_ready": False,
             "failure_codes": ["unsupported_platform"],
             "external_changes_enabled": False,
@@ -749,13 +990,14 @@ def prepare_wrangler(
             use_bundled_runtime=True,
         )
         if result["state"] != "ready":
+            failure_codes = list(result.get("failure_codes") or [])
             raise LiteCloudSetupError(
                 "Lite専用runtimeを確認できません。準備ツールの修復を実行してください。",
-                failure_code="bundled_runtime_unavailable",
+                failure_code=failure_codes[0] if failure_codes else "bundled_runtime_unavailable",
             )
         return {
             **result,
-            "runtime_managed": True,
+            "runtime_managed": result.get("runtime_source") == "bundled",
             "npm_ci_completed": False,
             "npm_audit_high_clear": True,
         }
@@ -851,7 +1093,7 @@ def start_cloudflare_login(
         )
     relay = Path(root) if root is not None else relay_root()
     bundled = use_bundled_runtime
-    resolved_runtime: LiteRuntimePaths | None = None
+    resolved_runtime: LiteRuntimePaths | LiteDevelopmentRuntimePaths | None = None
     resolved_node: str | None = None
     resolved_wrangler: Path | None = None
     if bundled:
@@ -868,10 +1110,13 @@ def start_cloudflare_login(
         _resolved_runtime=resolved_runtime,
     )
     if preflight["state"] != "ready":
+        failure_codes = list(preflight.get("failure_codes") or [])
         raise LiteCloudSetupError(
             "Lite専用runtimeを確認できません。準備ツールの修復を実行してください。",
             failure_code=(
-                "bundled_runtime_unavailable" if bundled else "npm_ci_prerequisite_missing"
+                failure_codes[0]
+                if failure_codes
+                else ("bundled_runtime_unavailable" if bundled else "npm_ci_prerequisite_missing")
             ),
         )
     if bundled:
@@ -929,7 +1174,7 @@ def start_cloudflare_login(
 
 
 def secret_bootstrap_contract(*, worker_exists: bool) -> dict[str, Any]:
-    """固定Wrangler 4.118.0で成立するSecret bootstrap契約を返す。"""
+    """固定Wrangler 4.149.0で成立するSecret bootstrap契約を返す。"""
 
     if worker_exists:
         return {
@@ -1305,7 +1550,7 @@ def _structured_error_codes(result: Any) -> set[int]:
 
     for value in values:
         visit(value)
-    # Wrangler 4.118.0は--json指定時も「Workerなし」を装飾済みstderrへ
+    # Wrangler 4.149.0は--json指定時も「Workerなし」を装飾済みstderrへ
     # `[code: 10007]` として出す。メッセージ本文には依存せず数値markerだけ読む。
     stderr = str(getattr(result, "stderr", "") or "")
     codes.update(int(value) for value in re.findall(r"\[code:\s*(\d+)\]", stderr))
@@ -1530,7 +1775,7 @@ def read_only_cloudflare_diagnostics(
             "external_changes_enabled": False,
         }
 
-    # Wrangler 4.118.0 の D1／KV／deployments list は --account-id を受け付けない。
+    # Wrangler 4.149.0 の D1／KV／deployments list は --account-id を受け付けない。
     # OAuthが複数accountへ到達できる場合も選択済みIDを曖昧にしないよう、Wranglerの
     # 公式account選択環境変数を子プロセスだけへ渡す。
     account_env = dict(os.environ)

@@ -54,6 +54,10 @@ export async function ensureProviderCache(
   now = new Date(),
 ): Promise<ProviderCacheContext | null> {
   if (route.provider !== "gemini" || snapshot.cache_policy !== "gemini_explicit") return null;
+  // Argonはimplicit cacheのみ対応するため、明示cache APIへ送らず通常入力へfallbackする。
+  // 料金カタログのcacheWrite有無で判定すると、既存のpreviewモデルや未知モデルまで
+  // 明示cache経路を抑止してしまうため、ここは新Argonのexact IDだけを対象にする。
+  if (route.model_id === "gemini-4-argon") return null;
   const logicalKey = await sha256(canonicalJson({
     snapshot_hash: snapshotHash,
     provider: route.provider,

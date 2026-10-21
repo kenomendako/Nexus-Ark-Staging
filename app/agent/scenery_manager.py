@@ -104,6 +104,10 @@ def generate_scenery_context(
         # プレースホルダーキー（未設定状態）の判定
         is_placeholder_key = not api_key or api_key == "YOUR_API_KEY_HERE" or api_key.startswith("AIzaSyB-") # デフォルト同梱の期限切れキー等
 
+        if is_placeholder_key:
+            from gemini_connection import is_vertex
+            is_placeholder_key = not is_vertex()
+
         if not force_regenerate:
             scenery_cache = load_scenery_cache(room_name)
             # 1. 完全一致キャッシュを確認

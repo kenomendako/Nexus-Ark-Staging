@@ -38,6 +38,8 @@ def _memory_result_label(doc) -> str:
         return "過去の会話"
     if doc_type == "episodic_memory":
         return f"エピソード記憶（{metadata.get('date', '')}）"
+    if doc_type == "lite_return_addendum":
+        return f"帰宅補足エピソード（{metadata.get('date', '')}）"
     if doc_type == "dream_insight":
         return "夢の記録"
     if doc_type == "research_notes":

@@ -10,6 +10,8 @@ const PROVIDER_HOSTS: Record<Provider, string> = {
 
 export type SecretBindingId =
   | "GEMINI_PERSONAL_1"
+  | "GEMINI_PERSONAL_2"
+  | "GEMINI_PERSONAL_3"
   | "OPENAI_PERSONAL_1"
   | "OPENAI_PERSONAL_2"
   | "ANTHROPIC_PERSONAL_1"
@@ -44,13 +46,62 @@ export async function fetchProviderWithoutRedirect(
   return response;
 }
 
-const SECRET_BINDING_METADATA: Record<SecretBindingId, { provider: Provider; allowedBaseUrlId: string }> = {
-  GEMINI_PERSONAL_1: { provider: "gemini", allowedBaseUrlId: "gemini-official" },
-  OPENAI_PERSONAL_1: { provider: "openai", allowedBaseUrlId: "openai-official" },
-  OPENAI_PERSONAL_2: { provider: "openai", allowedBaseUrlId: "openai-official" },
-  ANTHROPIC_PERSONAL_1: { provider: "anthropic", allowedBaseUrlId: "anthropic-official" },
-  XAI_PERSONAL_1: { provider: "xai", allowedBaseUrlId: "xai-official" },
-  OPENROUTER_PERSONAL_1: { provider: "openrouter", allowedBaseUrlId: "openrouter-official" },
+export interface SecretBindingMetadata {
+  provider: Provider;
+  allowedBaseUrlId: string;
+  credentialProfileId: string;
+  displayName: string;
+}
+
+const SECRET_BINDING_METADATA: Record<SecretBindingId, SecretBindingMetadata> = {
+  GEMINI_PERSONAL_1: {
+    provider: "gemini",
+    allowedBaseUrlId: "gemini-official",
+    credentialProfileId: "gemini-personal-1",
+    displayName: "Gemini（個人用1）",
+  },
+  GEMINI_PERSONAL_2: {
+    provider: "gemini",
+    allowedBaseUrlId: "gemini-official",
+    credentialProfileId: "gemini-personal-2",
+    displayName: "Gemini（個人用2）",
+  },
+  GEMINI_PERSONAL_3: {
+    provider: "gemini",
+    allowedBaseUrlId: "gemini-official",
+    credentialProfileId: "gemini-personal-3",
+    displayName: "Gemini（個人用3）",
+  },
+  OPENAI_PERSONAL_1: {
+    provider: "openai",
+    allowedBaseUrlId: "openai-official",
+    credentialProfileId: "openai-personal-1",
+    displayName: "OpenAI（個人用1）",
+  },
+  OPENAI_PERSONAL_2: {
+    provider: "openai",
+    allowedBaseUrlId: "openai-official",
+    credentialProfileId: "openai-personal-2",
+    displayName: "OpenAI（個人用2）",
+  },
+  ANTHROPIC_PERSONAL_1: {
+    provider: "anthropic",
+    allowedBaseUrlId: "anthropic-official",
+    credentialProfileId: "anthropic-personal-1",
+    displayName: "Anthropic（個人用1）",
+  },
+  XAI_PERSONAL_1: {
+    provider: "xai",
+    allowedBaseUrlId: "xai-official",
+    credentialProfileId: "xai-personal-1",
+    displayName: "xAI（個人用1）",
+  },
+  OPENROUTER_PERSONAL_1: {
+    provider: "openrouter",
+    allowedBaseUrlId: "openrouter-official",
+    credentialProfileId: "openrouter-personal-1",
+    displayName: "OpenRouter（個人用1）",
+  },
 };
 
 const ALLOWED_SECRET_BINDINGS = new Set<SecretBindingId>(
@@ -61,7 +112,23 @@ export function secretBindingMetadata(binding: string): { provider: Provider; al
   if (!ALLOWED_SECRET_BINDINGS.has(binding as SecretBindingId)) {
     throw new Error("secret_binding_not_allowed");
   }
-  return SECRET_BINDING_METADATA[binding as SecretBindingId];
+  const metadata = SECRET_BINDING_METADATA[binding as SecretBindingId];
+  return { provider: metadata.provider, allowedBaseUrlId: metadata.allowedBaseUrlId };
+}
+
+export function listSecretBindingRegistrationMetadata(): Array<{
+  provider: Provider;
+  secretBindingId: SecretBindingId;
+  credentialProfileId: string;
+  displayName: string;
+}> {
+  return (Object.entries(SECRET_BINDING_METADATA) as Array<[SecretBindingId, SecretBindingMetadata]>)
+    .map(([secretBindingId, metadata]) => ({
+      provider: metadata.provider,
+      secretBindingId,
+      credentialProfileId: metadata.credentialProfileId,
+      displayName: metadata.displayName,
+    }));
 }
 
 export function resolveSecret(binding: string, env: Env): string {

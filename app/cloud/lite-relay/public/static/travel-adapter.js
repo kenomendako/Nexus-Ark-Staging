@@ -1,3 +1,46 @@
+// 接続確認・JSON読取の期限。AI生成のSSEには適用しない。
+export const LITE_CONNECTION_TIMEOUT_MS = 5000;
+
+export async function withConnectionTimeout(operation, {
+  timeoutMs = LITE_CONNECTION_TIMEOUT_MS,
+  signal,
+} = {}) {
+  const controller = new AbortController();
+  let timer;
+  let abort;
+  const deadline = new Promise((_, reject) => {
+    abort = () => {
+      const error = new Error("通信を中止しました。");
+      error.name = "AbortError";
+      reject(error);
+      controller.abort();
+    };
+    if (signal?.aborted) {
+      abort();
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    timer = globalThis.setTimeout(() => {
+      const error = new Error("接続確認が時間内に完了しませんでした。");
+      error.name = "TimeoutError";
+      reject(error);
+      controller.abort();
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      deadline,
+      Promise.resolve().then(() => {
+        controller.signal.throwIfAborted();
+        return operation(controller.signal);
+      }),
+    ]);
+  } finally {
+    globalThis.clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
 const KEYS = {
   base: "nexusLite.travel.apiBase",
   access: "nexusLite.travel.device.accessToken",
@@ -128,17 +171,32 @@ function saveCredentials(value) {
 
 function clearCredentials() {
   [KEYS.access, KEYS.refresh, KEYS.deviceId].forEach((key) => localStorage.removeItem(key));
+  connectionRevision += 1;
 }
 
 let refreshAccessInFlight = null;
 let pendingOperationInFlight = false;
 let connectionRevision = 0;
 
-function connectionContext() { return { base: base(), revision: connectionRevision }; }
+function connectionContext() {
+  return {
+    base: base(),
+    deviceId: localStorage.getItem(KEYS.deviceId) || "",
+    revision: connectionRevision,
+  };
+}
 function assertConnection(context) {
-  if (context.base !== base() || context.revision !== connectionRevision) {
-    throw new TravelAdapterError("接続先が変更されました。元の接続先と記録を確認してください。", "pending_origin_mismatch");
+  if (
+    context.base !== base()
+    || context.deviceId !== (localStorage.getItem(KEYS.deviceId) || "")
+    || context.revision !== connectionRevision
+  ) {
+    throw new TravelAdapterError("接続先または端末認証が変更されました。元の接続先と記録を確認してください。", "pending_origin_mismatch");
   }
+}
+function connectionKey() {
+  const context = connectionContext();
+  return `${context.base}\u0000${context.deviceId}\u0000${context.revision}`;
 }
 async function withPendingGuard(operation) {
   const busy = () => new TravelAdapterError("別のLite送信確認を処理中です。少し待って再確認してください。", "pending_send_unresolved");
@@ -257,32 +315,42 @@ async function archivePendingInternal(expectedRaw, { mode, confirmed } = {}) {
 
 
 async function performRefreshAccess() {
-  const context = connectionContext();
-  const refreshToken = localStorage.getItem(KEYS.refresh);
-  if (!refreshToken || !base()) return { ok: false, reason: "credentials_missing" };
-  let response;
-  try {
-    response = await fetch(`${base()}/v1/devices/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-      cache: "no-store",
-    });
-  } catch (error) {
-    return { ok: false, reason: "worker_unreachable", error };
-  }
-  assertConnection(context);
-  if (localStorage.getItem(KEYS.refresh) !== refreshToken) throw new TravelAdapterError("端末登録が変わりました。状態を再確認してください。", "pending_changed");
-  if (response.status === 401 || response.status === 403) {
-    clearCredentials();
-    return { ok: false, reason: "re_pair_required", status: response.status };
-  }
-  if (!response.ok) return { ok: false, reason: "refresh_failed", status: response.status };
-  const credentials = await response.json();
-  assertConnection(context);
-  if (localStorage.getItem(KEYS.refresh) !== refreshToken) throw new TravelAdapterError("端末登録が変わりました。状態を再確認してください。", "pending_changed");
-  saveCredentials(credentials);
-  return { ok: true };
+  return withConnectionTimeout(async (signal) => {
+    const context = connectionContext();
+    const refreshToken = localStorage.getItem(KEYS.refresh);
+    if (!refreshToken || !base()) return { ok: false, reason: "credentials_missing" };
+    let response;
+    try {
+      response = await fetch(`${base()}/v1/devices/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        cache: "no-store",
+        signal,
+      });
+    } catch (error) {
+      return { ok: false, reason: "worker_unreachable", error };
+    }
+    signal.throwIfAborted();
+    assertConnection(context);
+    if (localStorage.getItem(KEYS.refresh) !== refreshToken) throw new TravelAdapterError("端末登録が変わりました。状態を再確認してください。", "pending_changed");
+    if (response.status === 401 || response.status === 403) {
+      clearCredentials();
+      return { ok: false, reason: "re_pair_required", status: response.status };
+    }
+    if (!response.ok) return { ok: false, reason: "refresh_failed", status: response.status };
+    const credentials = await response.json();
+    signal.throwIfAborted();
+    assertConnection(context);
+    if (localStorage.getItem(KEYS.refresh) !== refreshToken) throw new TravelAdapterError("端末登録が変わりました。状態を再確認してください。", "pending_changed");
+    saveCredentials(credentials);
+    return { ok: true };
+  }).catch((error) => {
+    if (error.name === "TimeoutError" || error.name === "AbortError") {
+      return { ok: false, reason: "worker_unreachable" };
+    }
+    throw error;
+  });
 }
 
 function refreshAccess() {
@@ -296,6 +364,7 @@ function refreshAccess() {
 
 async function request(path, options = {}, retry = true, classifyUnauthorized = true, context = connectionContext()) {
   assertConnection(context);
+  options.signal?.throwIfAborted();
   if (!base()) throw new Error("Worker URLが未設定です。");
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", "application/json");
@@ -307,9 +376,9 @@ async function request(path, options = {}, retry = true, classifyUnauthorized = 
     throw new TravelAdapterError("Workerへ接続できません。", "worker_unreachable");
   }
   assertConnection(context);
+  options.signal?.throwIfAborted();
   if (response.status === 401 && retry && classifyUnauthorized) {
     const refreshed = await refreshAccess();
-    assertConnection(context);
     if (refreshed.ok) return request(path, options, false, classifyUnauthorized, context);
     if (refreshed.reason === "worker_unreachable") {
       throw new TravelAdapterError("Workerへ接続できないため端末認証を更新できません。", "worker_unreachable");
@@ -321,6 +390,14 @@ async function request(path, options = {}, retry = true, classifyUnauthorized = 
         refreshed.status,
       );
     }
+    if (refreshed.reason === "re_pair_required") {
+      throw new TravelAdapterError(
+        "端末の認証期限が切れているか、端末が失効されています。再ペアリングが必要です。",
+        "re_pair_required",
+        refreshed.status || 401,
+      );
+    }
+    assertConnection(context);
     clearCredentials();
     throw new TravelAdapterError(
       "端末の認証期限が切れているか、端末が失効されています。再ペアリングが必要です。",
@@ -339,18 +416,31 @@ async function request(path, options = {}, retry = true, classifyUnauthorized = 
   return response;
 }
 
-async function jsonRequest(path, options = {}, classifyUnauthorized = true) {
-  const context = connectionContext();
-  const response = await request(path, options, classifyUnauthorized, classifyUnauthorized, context);
-  const body = await response.json().catch(() => ({}));
-  assertConnection(context);
-  if (!response.ok) {
-    const code = typeof body?.error === "string" && /^[a-z][a-z0-9_]{0,79}$/.test(body.error)
-      ? body.error
-      : "worker_request_failed";
-    throw new TravelAdapterError(code, code, response.status);
+async function jsonRequest(path, options = {}, classifyUnauthorized = true, requestContext = connectionContext()) {
+  const read = async (signal) => {
+    const context = requestContext;
+    const response = await request(path, { ...options, signal }, classifyUnauthorized, classifyUnauthorized, context);
+    const body = await response.json().catch(() => ({}));
+    signal?.throwIfAborted();
+    assertConnection(context);
+    if (!response.ok) {
+      const code = typeof body?.error === "string" && /^[a-z][a-z0-9_]{0,79}$/.test(body.error)
+        ? body.error
+        : "worker_request_failed";
+      throw new TravelAdapterError(code, code, response.status);
+    }
+    return body;
+  };
+  // 出発・帰宅などの書込みやAI送信を短い読取期限で打ち切らない。
+  if ((options.method || "GET").toUpperCase() !== "GET") return read(options.signal);
+  try {
+    return await withConnectionTimeout(read, { signal: options.signal });
+  } catch (error) {
+    if (error.name === "TimeoutError" || error.name === "AbortError") {
+      throw new TravelAdapterError("Workerへ接続できません。状態を再確認してください。", "worker_unreachable");
+    }
+    throw error;
   }
-  return body;
 }
 
 function parseSse(text) {
@@ -403,77 +493,85 @@ export const travelAdapter = {
   lastSendFailure,
   archivePending: (raw, options) => withPendingGuard(() => archivePendingInternal(raw, options)),
   paired: () => Boolean(accessToken()),
+  connectionKey,
   errorCode: (error) => error instanceof TravelAdapterError ? error.code : "",
   httpStatus: (error) => error instanceof TravelAdapterError ? error.status : 0,
   async health() {
-    if (!base()) return { ok: false, error: "worker_url_missing" };
-    let response;
-    try {
-      response = await fetch(`${base()}/v1/health`, { cache: "no-store" });
-    } catch (error) {
-      const primaryError = safeBrowserError(error);
+    return withConnectionTimeout(async (signal) => {
+      if (!base()) return { ok: false, error: "worker_url_missing" };
+      let response;
       try {
-        await fetch(`${base()}/v1/health`, { cache: "no-store", mode: "no-cors" });
+        response = await fetch(`${base()}/v1/health`, { cache: "no-store", signal });
+      } catch (error) {
+        const primaryError = safeBrowserError(error);
+        try {
+          await fetch(`${base()}/v1/health`, { cache: "no-store", mode: "no-cors", signal });
+          return {
+            ok: false,
+            error: "cors_rejected",
+            browser_error: primaryError.name,
+            browser_message: primaryError.message,
+          };
+        } catch (fallbackError) {
+          const fallback = safeBrowserError(fallbackError);
+          return {
+            ok: false,
+            error: "worker_unreachable",
+            browser_error: primaryError.name,
+            browser_message: primaryError.message,
+            fallback_error: fallback.name,
+            fallback_message: fallback.message,
+          };
+        }
+      }
+      let body;
+      try {
+        body = await response.json();
+      } catch (error) {
+        const parsed = safeBrowserError(error);
         return {
           ok: false,
-          error: "cors_rejected",
-          browser_error: primaryError.name,
-          browser_message: primaryError.message,
-        };
-      } catch (fallbackError) {
-        const fallback = safeBrowserError(fallbackError);
-        return {
-          ok: false,
-          error: "worker_unreachable",
-          browser_error: primaryError.name,
-          browser_message: primaryError.message,
-          fallback_error: fallback.name,
-          fallback_message: fallback.message,
+          error: "worker_invalid_response",
+          http_status: response.status,
+          content_type: response.headers.get("content-type") || "",
+          browser_error: parsed.name,
+          browser_message: parsed.message,
         };
       }
-    }
-    let body;
-    try {
-      body = await response.json();
-    } catch (error) {
-      const parsed = safeBrowserError(error);
-      return {
-        ok: false,
-        error: "worker_invalid_response",
-        http_status: response.status,
-        content_type: response.headers.get("content-type") || "",
-        browser_error: parsed.name,
-        browser_message: parsed.message,
-      };
-    }
-    if (!response.ok || !Number.isInteger(body.api_schema_version)) {
-      return {
-        ok: false,
-        error: "worker_invalid_response",
-        http_status: response.status,
-        content_type: response.headers.get("content-type") || "",
-        api_schema_version: body.api_schema_version,
-      };
-    }
-    if (body.api_schema_version > SUPPORTED_API_SCHEMA_VERSION) {
-      return { ok: false, error: "pwa_update_required", api_schema_version: body.api_schema_version };
-    }
-    if (body.api_schema_version < SUPPORTED_API_SCHEMA_VERSION) {
-      return { ok: false, error: "worker_update_required", api_schema_version: body.api_schema_version };
-    }
-    if (
-      body.storage_schema_ready === false
-      || (Number.isInteger(body.d1_schema_version) && body.d1_schema_version < REQUIRED_D1_SCHEMA_VERSION)
-    ) {
-      return {
-        ok: false,
-        error: "worker_update_required",
-        api_schema_version: body.api_schema_version,
-        d1_schema_version: body.d1_schema_version,
-        storage_schema_ready: body.storage_schema_ready,
-      };
-    }
-    return body;
+      if (!response.ok || !Number.isInteger(body.api_schema_version)) {
+        return {
+          ok: false,
+          error: "worker_invalid_response",
+          http_status: response.status,
+          content_type: response.headers.get("content-type") || "",
+          api_schema_version: body.api_schema_version,
+        };
+      }
+      if (body.api_schema_version > SUPPORTED_API_SCHEMA_VERSION) {
+        return { ok: false, error: "pwa_update_required", api_schema_version: body.api_schema_version };
+      }
+      if (body.api_schema_version < SUPPORTED_API_SCHEMA_VERSION) {
+        return { ok: false, error: "worker_update_required", api_schema_version: body.api_schema_version };
+      }
+      if (
+        body.storage_schema_ready === false
+        || (Number.isInteger(body.d1_schema_version) && body.d1_schema_version < REQUIRED_D1_SCHEMA_VERSION)
+      ) {
+        return {
+          ok: false,
+          error: "worker_update_required",
+          api_schema_version: body.api_schema_version,
+          d1_schema_version: body.d1_schema_version,
+          storage_schema_ready: body.storage_schema_ready,
+        };
+      }
+      return body;
+    }).catch((error) => ({
+      ok: false,
+      error: "worker_unreachable",
+      browser_error: safeBrowserError(error).name,
+      browser_message: safeBrowserError(error).message,
+    }));
   },
   async pair(code, displayName) {
     const body = await jsonRequest("/v1/devices/pair", {
@@ -481,6 +579,7 @@ export const travelAdapter = {
       body: JSON.stringify({ code, display_name: displayName }),
     }, false);
     saveCredentials(body);
+    connectionRevision += 1;
     return body;
   },
   listStandby: () => jsonRequest("/v1/standby-snapshots"),
@@ -529,7 +628,34 @@ export const travelAdapter = {
     const path = Array.isArray(session.personas)
       ? `/v1/travel-sessions/${encodeURIComponent(session.travel_session_id)}/personas/${encodeURIComponent(personaId)}/events`
       : `/v1/travel-sessions/${encodeURIComponent(session.travel_session_id)}/events`;
-    return jsonRequest(`${path}?after_sequence=0`);
+    const context = connectionContext();
+    const pageSize = 100;
+    let afterSequence = 0;
+    const events = [];
+    const missingSequences = [];
+    while (true) {
+      const page = await jsonRequest(`${path}?after_sequence=${afterSequence}`, {}, true, context);
+      if (!page || typeof page !== "object" || Array.isArray(page)
+        || !Array.isArray(page.events) || !Array.isArray(page.missing_sequences)) {
+        throw new TravelAdapterError("Lite履歴の応答形式を確認できません。", "travel_history_invalid_response");
+      }
+      const nextCursor = page.next_cursor;
+      if (!Number.isSafeInteger(nextCursor) || nextCursor < 0 || nextCursor < afterSequence) {
+        throw new TravelAdapterError("Lite履歴の次の位置を確認できません。", "travel_history_invalid_cursor");
+      }
+      if (page.events.length > pageSize) {
+        throw new TravelAdapterError("Lite履歴の1ページが大きすぎます。", "travel_history_invalid_response");
+      }
+      events.push(...page.events);
+      missingSequences.push(...page.missing_sequences);
+      if (page.events.length < pageSize) {
+        return { ...page, events, missing_sequences: missingSequences };
+      }
+      if (nextCursor <= afterSequence) {
+        throw new TravelAdapterError("Lite履歴の読み込み位置が進みません。", "travel_history_cursor_stalled");
+      }
+      afterSequence = nextCursor;
+    }
   },
   providerProfiles: () => jsonRequest("/v1/provider-profiles"),
   models(credentialProfileId, refresh = false) {
@@ -627,6 +753,7 @@ export const travelAdapter = {
   saveDraft(value) { localStorage.setItem(KEYS.draft, value); },
   draft: () => localStorage.getItem(KEYS.draft) || "",
   clear() {
+    connectionRevision += 1;
     Object.values(KEYS).filter((key) => key !== KEYS.base && key !== KEYS.pendingArchive).forEach((key) => localStorage.removeItem(key));
   },
 };

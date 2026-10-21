@@ -18,6 +18,8 @@ declare namespace Cloudflare {
     LITE_ALLOWED_ORIGIN?: string;
     TRAVEL_GEMINI_MODEL?: string;
     GEMINI_PERSONAL_1?: string;
+    GEMINI_PERSONAL_2?: string;
+    GEMINI_PERSONAL_3?: string;
     OPENAI_PERSONAL_1?: string;
     OPENAI_PERSONAL_2?: string;
     ANTHROPIC_PERSONAL_1?: string;

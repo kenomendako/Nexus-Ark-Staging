@@ -209,7 +209,7 @@ export async function recordProviderTerminalDiagnostics(
 export async function recordProviderHttpFailure(
   db: D1Database,
   clientMessageId: string,
-  httpStatus: number,
+  httpStatus: number | null,
   errorCode: string,
 ): Promise<void> {
   await db

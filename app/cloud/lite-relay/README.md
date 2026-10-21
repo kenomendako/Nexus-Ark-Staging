@@ -4,7 +4,7 @@ Lite独立お出かけモードの契約を、合成データだけでローカ�
 Phase 0ハーネスと、Phase 1単一ペルソナMVP、Phase 2主要マルチプロバイダ対応、Phase 3料金／cacheの
 Workerテンプレートを管理する。
 
-Phase 5はWorker API schema 9、D1 `0010`、暗号化待機snapshot、`recovery_unconfirmed`障害開始、
+Phase 5はWorker API schema 10、D1 `0010`、暗号化待機snapshot、`recovery_unconfirmed`障害開始、
 owner診断、端末一覧・全失効、retention preview／run／Cron記録、strict CORSを実装する。
 現行Nexus Ark Liteの`mobile_app/`をhome／travel共通UI正本とし、`npm run build:unified-lite`で
 Worker Static Assetsを生成する。`public/`を直接編集して別実装を作らない。
@@ -45,27 +45,30 @@ Anthropic automatic cache、Gemini Explicit cacheの作成／再利用／削除�
 
 ## 必要環境
 
-- Node.js 22以上（開発・検証専用）
-- npm
+- Node.js 22以上（source checkoutの開発・検証専用）
+- `package.json`／`package-lock.json`と、既存の`node_modules/wrangler`（Wrangler `4.118.0`）
 
-リポジトリ本体のPython実行環境や配布版ランタイムへNode.js依存は追加しない。
+WSL・ソース版でのNode pathの指定、Git checkoutと配布manifestの境界、`状態を確認`の表示、署名済みWindows x64版との違いは、正本の[Liteクラウド準備ガイド](../../docs/user_guide/07a_lite_cloud_setup.md)の「WSL・ソース版の開発用実行環境」を参照する。開発用Nodeは`NEXUS_ARK_LITE_DEV_NODE`へ絶対pathで明示し、Node/npmの自動導入やPATH fallbackを使わない。リポジトリ本体のPython実行環境や配布版runtimeへNode.js依存は追加しない。
+
+開発用runtimeが準備済みでも、既存Worker、D1、KV、PWA資産を更新する操作ではない。Cloudflareや独立セッションを使う場合は、対象と計画を確認した明示操作を別途行う。D1 migrationの現行終点は`0010`である。
 
 ## ローカル検証
 
 ```bash
 cd cloud/lite-relay
-npm install
 npm run build:unified-lite
 npm run verify
 npm run dry-run
 ```
+
+上記は既存のローカル依存を使う明示的な開発・検証コマンドである。`npm install`やregistryからの自動導入を前提にしない。lockと実際のWranglerが`4.118.0`でない場合は、先に開発環境を整合させる。
 
 検証内容:
 
 - Gemini、OpenAI、Anthropic、xAI、OpenRouterの合成SSE正規化
 - stream中断、xAI累積usage、OpenRouter実cost・上流・fallback違反
 - D1 migration、並行予約、atomic commit、cursor欠番、本文削除、`outcome_unknown`
-- 5分・単回pairing code、access／refresh tokenローテーション、端末失効
+- 単回pairing code（本体では標準15分・5/15/30分を選択）、access／refresh tokenローテーション、端末失効
 - snapshot allowlist、秘密情報／絶対パス拒否、署名付き帰宅bundle、即時／期限削除
 - Secret canary除去、host完全一致、redirect拒否
 - home/travelのcache・storage namespaceとAPI schema境界
@@ -75,6 +78,11 @@ npm run dry-run
 - Phase 3料金内訳、未知価格、予算停止／保留、Gemini cache lifecycle、bundle v3台帳冪等性
 - Phase 5待機世代、暗号化、単一activation、未確認分岐、owner診断、端末、retention、strict CORS
 - 待機中／独立モード開始後の外部AI export、明示同意、persona境界、非永続・非cache
+
+所有者専用 `POST /v1/pairing-codes` は任意のJSON `{"ttl_minutes": 15}` を受け付ける。
+指定できる値は整数5・15・30。bodyなし・`{}` は旧クライアント互換の5分とし、応答には
+`code`・`expires_at`・確定した `ttl_minutes` を返す。不正な値は発行前に400で拒否する。
+コードは有効期限に達すると使えず、期限内も1回限り。登録済み端末の認証期限は別に扱う。
 
 ## Remote検証資源
 
@@ -124,6 +132,7 @@ Phase 5ではさらに`STANDBY_ENCRYPTION_KEY`を32文字以上の独立した�
 利用するprofileに対応するものだけを登録する。
 
 - `GEMINI_PERSONAL_1`
+- `GEMINI_PERSONAL_2` / `GEMINI_PERSONAL_3`（任意の予備枠。初期構築の必須Secretにはしない）
 - `OPENAI_PERSONAL_1`
 - `ANTHROPIC_PERSONAL_1`
 - `XAI_PERSONAL_1`
@@ -133,12 +142,18 @@ Secret値はD1の`provider_profiles`へ保存しない。D1にはallowlist済み
 端末向けAPIはbinding IDも返さない。モデルはsnapshot v2またはroute変更APIから指定し、Workerの
 ソースコードや設定テンプレートへ運用モデル名を固定しない。
 
+本体はSecret登録前に、所有者専用 `GET /v1/provider-profile-registration-options` で
+登録枠・既存profile所有者を確認する。応答は秘密値を含まない。
+予備枠未対応・profile競合・不正応答ではSecret送信を開始しない。
+同じbindingを所有する既存custom profileの再登録は、そのIDを保ったまま行える。
+
 端末向け`GET /v1/provider-profiles/{id}/models`は選択したprofileだけの公式一覧を取得し、
 5分以内のKV cacheを再利用する。`?refresh=1`で明示更新できる。取得失敗時は1時間以内のstale cacheだけを
 返し、それより古い一覧で新規選択を許可しない。KV自体の読み書きに失敗しても、公式APIのlive取得が
 成功していれば一覧応答を継続する。
 
-## Node 18が既定の開発環境
+## Node versionと配布経路の境界
 
-Wrangler 4.110以降はNode.js 22以上を必要とする。Node 18しかない環境では、Node 22以上を用意してから
-上記コマンドを実行する。依存関係を古い脆弱な検証パッケージへ下げて回避しない。
+Wrangler 4.110以降はNode.js 22以上を必要とする。Node 18を使うためにWranglerや依存関係を古い版へ下げない。
+WSL・ソース版での明示Node指定は、[Liteクラウド準備ガイド](../../docs/user_guide/07a_lite_cloud_setup.md)の「WSL・ソース版の開発用実行環境」に従う。
+署名済みWindows x64配布版は同梱runtimeを使い、利用者がNode.jsやnpmを選択する経路ではない。

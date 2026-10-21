@@ -16,7 +16,7 @@ from update_host.runtime import validate_runtime_tree
 
 
 MINIMUM_NODE_MAJOR = 22
-EXPECTED_WRANGLER_VERSION = "4.118.0"
+EXPECTED_WRANGLER_VERSION = "4.149.0"
 _VERSION_OUTPUT = re.compile(r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?!\d)")
 _APP_VERSION = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$")
 

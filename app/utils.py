@@ -35,7 +35,7 @@ except ImportError:
 import io
 import contextlib
 import glob
-from file_lock_utils import locked_file, safe_append_text
+from file_lock_utils import get_file_lock, locked_file, safe_append_text
 
 LOCK_FILE_PATH = Path("nexus_ark.lock")
 _MIGRATION_DONE_CACHE = set()
@@ -304,6 +304,15 @@ def release_lock():
 _file_log_cache: Dict[str, Tuple[float, List[Dict[str, str]]]] = {}
 _file_message_count_cache: Dict[str, Tuple[float, int]] = {}
 
+# Lite帰宅ログのevent metadata。コメントは本文の一部として扱わず、対応する
+# 発言へ付与する。markerはeventの再取込判定に使うため、形式を厳密に受ける。
+_LITE_TRAVEL_EVENT_METADATA_RE = re.compile(
+    r"^\s*<!--\s*Lite Travel Event:\s*([0-9a-fA-F]{64})\s*-->\s*$"
+)
+_LITE_TRAVEL_CREATED_METADATA_RE = re.compile(
+    r"^\s*<!--\s*Lite Travel Created At:\s*(.*?)\s*-->\s*$"
+)
+
 def invalidate_chat_log_cache(file_path: str):
     """指定ファイルに関連するログキャッシュを無効化する。"""
     if not file_path:
@@ -382,6 +391,104 @@ def _count_log_messages_in_file(file_path: str) -> int:
 
     _file_message_count_cache[file_path] = (mtime, count)
     return count
+
+
+def _extract_lite_metadata_suffix(text: str) -> Tuple[str, Dict[str, str]]:
+    """ヘッダー直前のLite metadataを本文から分離する。
+
+    帰宅ログは次の発言のmarkerをその発言ヘッダーの直前へ置く。従来の
+    ヘッダー単位parserではそのコメントが前の発言本文へ混ざるため、ヘッダー
+    間の末尾だけをmetadataとして取り出す。通常のHTMLコメントや本文は変更しない。
+    """
+    lines = text.splitlines(keepends=True)
+    index = len(lines)
+    while index and not lines[index - 1].strip():
+        index -= 1
+
+    metadata: Dict[str, str] = {}
+    metadata_started = False
+    while index:
+        line = lines[index - 1].rstrip("\r\n")
+        event_match = _LITE_TRAVEL_EVENT_METADATA_RE.match(line)
+        created_match = _LITE_TRAVEL_CREATED_METADATA_RE.match(line)
+        if event_match:
+            metadata["event_marker"] = event_match.group(1).lower()
+            metadata_started = True
+            index -= 1
+            continue
+        if created_match:
+            metadata["created_at"] = created_match.group(1)
+            metadata_started = True
+            index -= 1
+            continue
+        if metadata_started and not line.strip():
+            index -= 1
+            continue
+        break
+
+    if not metadata:
+        return text, {}
+    return "".join(lines[:index]), metadata
+
+
+def _extract_lite_metadata_prefix(text: str) -> Tuple[str, Dict[str, str]]:
+    """旧Liteログでヘッダー直後に置かれたmetadataを読み取る。"""
+    lines = text.splitlines(keepends=True)
+    index = 0
+    while index < len(lines) and not lines[index].strip():
+        index += 1
+    metadata: Dict[str, str] = {}
+    while index < len(lines):
+        line = lines[index].rstrip("\r\n")
+        event_match = _LITE_TRAVEL_EVENT_METADATA_RE.match(line)
+        created_match = _LITE_TRAVEL_CREATED_METADATA_RE.match(line)
+        if event_match:
+            metadata["event_marker"] = event_match.group(1).lower()
+            index += 1
+            continue
+        if created_match:
+            metadata["created_at"] = created_match.group(1)
+            index += 1
+            continue
+        if metadata and not line.strip():
+            index += 1
+            continue
+        break
+    if not metadata:
+        return text, {}
+    return "".join(lines[index:]), metadata
+
+
+def _lite_event_local_datetime(value: Any) -> Optional[datetime.datetime]:
+    """Lite metadataの元日時を本体ローカル時刻へ変換する。"""
+    try:
+        # 本体側のpending登録と同じparserを正本として利用する。遅延importで
+        # utils -> lite_travelの循環を起動時に作らない。
+        from lite_return_memory import parse_event_datetime
+    except (ImportError, AttributeError):
+        return None
+    try:
+        return parse_event_datetime(value)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def _attach_lite_metadata(message: Dict[str, Any], metadata: Dict[str, str]) -> None:
+    if not metadata:
+        return
+    marker = metadata.get("event_marker")
+    if marker:
+        message["_lite_travel_event_marker"] = marker
+        # markerだけ残る旧ログもLite発言として扱い、本文中の引用日時を
+        # 元日時と誤認してcutoff日を作らない。
+        if "created_at" not in metadata:
+            message["_lite_created_at"] = None
+    if "created_at" in metadata:
+        created_at = metadata["created_at"]
+        message["_lite_created_at"] = created_at
+        parsed = _lite_event_local_datetime(created_at)
+        if parsed is not None:
+            message["_message_date"] = parsed.strftime("%Y-%m-%d")
 
 
 def load_chat_log(file_path: str, single_file_only: bool = False) -> List[Dict[str, str]]:
@@ -470,6 +577,9 @@ def load_chat_log(file_path: str, single_file_only: bool = False) -> List[Dict[s
             else:
                 current_file_msgs = []
                 matches = list(header_pattern.finditer(content))
+                pending_metadata: Dict[str, str] = {}
+                if matches:
+                    _, pending_metadata = _extract_lite_metadata_suffix(content[:matches[0].start()])
                 for i, match in enumerate(matches):
                     role = match.group(1).upper()
                     responder = match.group(2).strip()
@@ -477,8 +587,26 @@ def load_chat_log(file_path: str, single_file_only: bool = False) -> List[Dict[s
                         responder = "user"
                     start_of_content = match.end()
                     end_of_content = matches[i + 1].start() if i + 1 < len(matches) else len(content)
-                    message_content = content[start_of_content:end_of_content].strip()
-                    current_file_msgs.append({"role": role, "responder": responder, "content": message_content, "_source_file_": f_path})
+                    message_content = content[start_of_content:end_of_content]
+                    # 次の発言ヘッダー直前にある帰宅metadataは、前の本文から
+                    # 外して次回ループの発言へ渡す。旧形式では最終発言の末尾に
+                    # metadataが残る場合もあるため、最終区間からも読み取る。
+                    message_content, next_metadata = _extract_lite_metadata_suffix(message_content)
+                    message_content, leading_metadata = _extract_lite_metadata_prefix(message_content)
+                    message = {
+                        "role": role,
+                        "responder": responder,
+                        "content": message_content.strip(),
+                        "_source_file_": f_path,
+                    }
+                    # 新形式はヘッダー直前、旧形式はヘッダー直後のmetadataを
+                    # 受け入れる。両方ある場合は直前の新形式を優先する。
+                    metadata_for_message = pending_metadata or leading_metadata
+                    if i + 1 == len(matches) and not metadata_for_message:
+                        metadata_for_message = next_metadata
+                    _attach_lite_metadata(message, metadata_for_message)
+                    current_file_msgs.append(message)
+                    pending_metadata = next_metadata if i + 1 < len(matches) else {}
                 file_messages = current_file_msgs
             
             # キャッシュ更新
@@ -593,8 +721,13 @@ def load_chat_log_lazy(
             # ファイル内のメッセージを逆順にチェック
             for msg in reversed(current_file_msgs):
                 content = msg.get('content', '')
-                matches = date_pattern.findall(content)
-                msg_date = matches[-1] if matches else "9999-12-31" # 日付なしは一旦残す
+                if "_lite_created_at" in msg:
+                    # Lite帰宅metadataがある発言は元日時を正本にする。不正／欠落
+                    # なら本文引用中の日時を拾わず、帰宅日への偽装を避ける。
+                    msg_date = str(msg.get("_message_date") or "9999-12-31")
+                else:
+                    matches = date_pattern.findall(content)
+                    msg_date = matches[-1] if matches else "9999-12-31" # 日付なしは一旦残す
                 
                 if msg_date < cutoff_date:
                     if min_turns > 0 and (len(full_log_buffer) + len(filtered)) < min_turns:
@@ -736,6 +869,17 @@ def _get_room_dir_from_path(file_path: str) -> str:
     return os.path.dirname(file_path)
 
 def _migrate_chat_logs(room_dir: str):
+    """ルーム単位のロックを取得して旧ログを月次形式へ移行する。"""
+    if not room_dir:
+        return
+
+    room_dir = os.path.abspath(room_dir)
+    migration_lock = get_file_lock(os.path.join(room_dir, "log.txt"))
+    with migration_lock:
+        return _migrate_chat_logs_locked(room_dir)
+
+
+def _migrate_chat_logs_locked(room_dir: str):
     """
     既存の log.txt および log_archives を新形式 (logs/YYYY-MM.txt) に自動移行する。
     
@@ -744,10 +888,6 @@ def _migrate_chat_logs(room_dir: str):
     - マーカーファイル (.migration_done) による重複実行防止
     - 月の再配分以外の余計な処理（ソート、内容変更等）は一切行わない
     """
-    if not room_dir:
-        return
-    room_dir = os.path.abspath(room_dir)
-        
     # グローバルキャッシュでチェック (セッションごとの重複実行防止)
     global _MIGRATION_DONE_CACHE
     if room_dir in _MIGRATION_DONE_CACHE:

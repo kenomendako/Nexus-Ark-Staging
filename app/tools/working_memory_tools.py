@@ -673,7 +673,19 @@ def get_working_memory_health(
     if content is None:
         content = safe_text_read(path) if file_exists else ""
     _preface, sections = _split_wm_markdown_sections(content)
-    headings = [_section_from_key(heading) for heading, _body in sections]
+    # 診断だけで日付付き見出しを同じ役割として数える。本文再構成には使わない。
+    headings = []
+    dated_operational_sections = False
+    for heading, _body in sections:
+        role = _section_from_key(heading)
+        dated = re.fullmatch(
+            r"(Current Intent|Next Action|Stop Condition)\s*[（(][^()（）]*\d{4}-\d{2}-\d{2}[^()（）]*[)）]",
+            role, re.IGNORECASE,
+        )
+        if dated:
+            role = _section_from_key(dated.group(1))
+            dated_operational_sections = True
+        headings.append(role)
     meaningful = get_meaningful_working_memory_activity(meta) if registered else None
     stale = bool(
         meaningful
@@ -693,6 +705,8 @@ def get_working_memory_health(
         flags.append("file_missing")
     if stale:
         flags.append(f"stale_{stale_days}d")
+    if dated_operational_sections:
+        flags.append("dated_operational_sections")
     if not any(heading in _STANDARD_WM_SECTIONS for heading in headings):
         flags.append("standard_sections_missing")
     for heading in ("Current Intent", "Next Action", "Stop Condition"):

@@ -17,6 +17,7 @@ import json
 import hashlib
 import math
 import re
+from collections import Counter
 from datetime import date, datetime
 
 from langchain_core.embeddings import Embeddings
@@ -113,6 +114,166 @@ def _parse_episodic_date_range(metadata: Dict) -> Optional[Tuple[date, date]]:
         return None
 
     return start_date, end_date
+
+
+def _episodic_summary_fingerprint(summary: object) -> str:
+    """エピソード本文の変更を検出するための安定したfingerprintを返す。"""
+    text = "" if summary is None else str(summary)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _episodic_record_id(episode: Dict) -> str:
+    """エピソードIDと本文fingerprintを含む差分更新用record IDを作る。"""
+    date_str = str(episode.get("date") or "unknown").strip() or "unknown"
+    episode_type = str(episode.get("type") or "episodic_memory").strip() or "episodic_memory"
+    episode_id = str(episode.get("id") or "").strip()
+    logical_id = episode_id or f"{episode_type}:{date_str}"
+    fingerprint = _episodic_summary_fingerprint(episode.get("summary", ""))
+    return f"episodic:{episode_type}:{logical_id}:{fingerprint}"
+
+
+def _collect_episodic_documents(
+    episodic_files: List[Path],
+    processed_records: Set[str],
+    existing_documents: Optional[List[Document]] = None,
+) -> List[Tuple[str, Document]]:
+    """月次／旧形式のエピソードを、通常dailyと補足を区別して収集する。"""
+    pending_items: List[Tuple[str, Document]] = []
+    for episodic_path in episodic_files:
+        try:
+            with open(episodic_path, "r", encoding="utf-8") as f:
+                episodes = json.load(f)
+        except Exception:
+            continue
+        if not isinstance(episodes, list):
+            continue
+
+        for episode in episodes:
+            if not isinstance(episode, dict):
+                continue
+            summary = episode.get("summary", "")
+            if not summary:
+                continue
+
+            date_str = str(episode.get("date", "unknown") or "unknown")
+            episode_type = str(episode.get("type") or "episodic_memory")
+            fingerprint = _episodic_summary_fingerprint(summary)
+            record_id = _episodic_record_id(episode)
+            if record_id in processed_records:
+                continue
+            legacy_record_id = f"episodic:{date_str}"
+            if (
+                episode_type != "lite_return_addendum"
+                and legacy_record_id in processed_records
+                and _legacy_episode_content_matches(episode, existing_documents or [])
+            ):
+                continue
+
+            metadata = {
+                "source": episodic_path.name,
+                "type": episode_type,
+                "date": date_str,
+                "episode_fingerprint": fingerprint,
+            }
+            episode_id = str(episode.get("id") or "").strip()
+            if episode_id:
+                metadata["episode_id"] = episode_id
+            for key in ("arousal", "created_at", "compressed", "monthly_compressed"):
+                if key in episode:
+                    metadata[key] = episode[key]
+
+            content = f"日付: {date_str}\n内容: {summary}"
+            pending_items.append((record_id, Document(page_content=content, metadata=metadata)))
+
+    return pending_items
+
+
+def _index_documents(index: object) -> List[Document]:
+    """FAISS docstoreからDocumentを読み取る。索引を変更せずstubにも対応する。"""
+    docstore = getattr(index, "docstore", None)
+    documents = getattr(docstore, "_dict", None)
+    if not isinstance(documents, dict):
+        return []
+    return [doc for doc in documents.values() if isinstance(doc, Document)]
+
+
+def _legacy_episode_content_matches(
+    episode: Dict,
+    existing_documents: List[Document],
+) -> bool:
+    """旧形式の同日ベクトル本文が現行episode本文と一致するか確認する。
+
+    旧collectorはspecial typeもepisodic_memoryとして保存していたため、
+    帰宅補足を除く既存typeは本文一致時に旧ベクトルを再利用する。
+    """
+    if not existing_documents:
+        return False
+    episode_type = str(episode.get("type") or "episodic_memory")
+    if episode_type == "lite_return_addendum":
+        return False
+    date_str = str(episode.get("date") or "").strip()
+    summary = str(episode.get("summary") or "")
+    if not date_str or not summary:
+        return False
+
+    expected = f"日付: {date_str}\n内容: {summary}"
+    chunks = [
+        str(doc.page_content)
+        for doc in existing_documents
+        if (doc.metadata or {}).get("type") == "episodic_memory"
+        and str((doc.metadata or {}).get("date") or "").strip() == date_str
+    ]
+    if not chunks:
+        return False
+    if len(chunks) == 1 and chunks[0] == expected:
+        return True
+
+    def normalize_chunk(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    expected_chunk_sets = []
+    splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
+    for source_text in (expected, normalize_chunk(expected)):
+        expected_chunk_sets.append(
+            Counter(
+                normalize_chunk(chunk)
+                for chunk in splitter.split_text(source_text)
+                if len(chunk.strip()) >= 10
+                and chunk.strip() not in {"*", "-", "#", "**", "***", "---", "##", "###", "####"}
+            )
+        )
+    actual_chunks = Counter(normalize_chunk(chunk) for chunk in chunks if len(chunk.strip()) >= 10)
+    if any(actual_chunks == expected_chunks for expected_chunks in expected_chunk_sets):
+        return True
+
+    # 部分一致やchunk区間の被覆では改訂を同一本文と誤認するため、
+    # 旧形式の互換判定は期待チャンク集合の完全一致までで終了する。
+    return False
+
+
+def _collect_current_episode_fingerprints(episodic_files: List[Path]) -> Dict[str, str]:
+    """現行JSONにあるIDごとの本文fingerprintを返す。"""
+    current: Dict[str, str] = {}
+    for episodic_path in episodic_files:
+        try:
+            with open(episodic_path, "r", encoding="utf-8") as f:
+                episodes = json.load(f)
+        except Exception:
+            continue
+        if not isinstance(episodes, list):
+            continue
+        for episode in episodes:
+            if not isinstance(episode, dict):
+                continue
+            episode_id = str(episode.get("id") or "").strip()
+            if not episode_id:
+                continue
+            episode_type = str(episode.get("type") or "episodic_memory")
+            current.setdefault(
+                f"{episode_type}:{episode_id}",
+                _episodic_summary_fingerprint(episode.get("summary", "")),
+            )
+    return current
 
 
 def _date_ranges_overlap(left: Tuple[date, date], right: Tuple[date, date]) -> bool:
@@ -349,10 +510,12 @@ def _is_legacy_unprovenanced_creative_document(doc: Document) -> bool:
 def _dedupe_scored_rag_results(
     scored_results: List[ScoredRAGResult],
     current_identity_hashes: Optional[Dict[str, str]] = None,
+    current_episode_fingerprints: Optional[Dict[str, str]] = None,
 ) -> Tuple[List[ScoredRAGResult], int, int, int]:
     """
     RAG検索結果をスコア順のまま先勝ちで重複除去する。
     既存の先頭100文字content dedupに加え、episodic_memoryは日付レンジが重なるものを除外する。
+    現行JSONとfingerprintが一致しないepisode revisionも検索時だけ除外する。
     identity は現行ハッシュ以外、および旧diary型で残った memory_identity.txt を検索結果から除外する。
     """
     seen_contents = set()
@@ -362,6 +525,22 @@ def _dedupe_scored_rag_results(
     episodic_duplicate_count = 0
     identity_stale_count = 0
     identity_hashes = current_identity_hashes or {}
+    episode_fingerprints = current_episode_fingerprints or {}
+    current_episode_result_keys = set()
+    for candidate_doc, *_ in scored_results:
+        candidate_metadata = getattr(candidate_doc, "metadata", {}) or {}
+        candidate_type = str(candidate_metadata.get("type") or "episodic_memory")
+        candidate_id = str(candidate_metadata.get("episode_id") or "").strip()
+        candidate_fingerprint = str(candidate_metadata.get("episode_fingerprint") or "").strip()
+        candidate_key = f"{candidate_type}:{candidate_id}"
+        if (
+            candidate_id
+            and candidate_fingerprint
+            and episode_fingerprints.get(candidate_key) == candidate_fingerprint
+        ):
+            current_episode_result_keys.add(
+                (candidate_type, str(candidate_metadata.get("date") or "").strip())
+            )
 
     for doc, sim_score, arousal, decay, comp_score in scored_results:
         source = doc.metadata.get("source")
@@ -370,6 +549,31 @@ def _dedupe_scored_rag_results(
         if current_identity_hash:
             if doc_type != "identity" or doc.metadata.get("identity_hash") != current_identity_hash:
                 identity_stale_count += 1
+                continue
+
+        episode_id = str(doc.metadata.get("episode_id") or "").strip()
+        episode_fingerprint = str(doc.metadata.get("episode_fingerprint") or "").strip()
+        if episode_id and episode_fingerprint:
+            episode_key = f"{doc_type or 'episodic_memory'}:{episode_id}"
+            current_fingerprint = episode_fingerprints.get(episode_key)
+            if current_fingerprint and current_fingerprint != episode_fingerprint:
+                # 旧revisionは既存索引から削除せず、検索時だけ現行JSONと照合して隠す。
+                # 返却tupleの互換性を維持するため、content重複件数へ合算する。
+                content_duplicate_count += 1
+                continue
+        elif episode_id:
+            episode_key = f"{doc_type or 'episodic_memory'}:{episode_id}"
+            if episode_key in episode_fingerprints and (
+                str(doc.metadata.get("type") or "episodic_memory"),
+                str(doc.metadata.get("date") or "").strip(),
+            ) in current_episode_result_keys:
+                content_duplicate_count += 1
+                continue
+        elif doc_type == "episodic_memory":
+            legacy_date_key = ("episodic_memory", str(doc.metadata.get("date") or "").strip())
+            if legacy_date_key in current_episode_result_keys:
+                # 移行前のIDなしdailyは、現行revisionが同じ検索候補にある時だけ隠す。
+                content_duplicate_count += 1
                 continue
 
         content_key = doc.page_content[:100].strip()
@@ -1081,6 +1285,20 @@ class RAGManager:
                 return {}
         return {}
 
+    def _load_current_episode_fingerprints(self) -> Dict[str, str]:
+        """検索時に旧revisionを除外するため、現行エピソード本文のhashを読む。"""
+        room_dir = getattr(self, "room_dir", None)
+        if room_dir is None:
+            return {}
+        episodic_dir = room_dir / "memory" / "episodic"
+        legacy_episodic_path = room_dir / "memory" / "episodic_memory.json"
+        episodic_files: List[Path] = []
+        if legacy_episodic_path.exists():
+            episodic_files.append(legacy_episodic_path)
+        if episodic_dir.exists():
+            episodic_files.extend(sorted(episodic_dir.glob("*.json")))
+        return _collect_current_episode_fingerprints(episodic_files)
+
     def _save_current_identity_hashes(self, current_hashes: Dict[str, str]) -> None:
         try:
             with open(self.identity_current_record, 'w', encoding='utf-8') as f:
@@ -1577,6 +1795,8 @@ class RAGManager:
         report("記憶索引を更新中: 過去ログ、エピソード記憶、夢日記、日記ファイルの差分を確認...")
         
         processed_records = self._load_processed_record()
+        static_db = self._safe_load_index(self.static_index_path)
+        existing_documents = _index_documents(static_db)
         
         # 処理対象のキュー: (record_id, document) のタプルリスト
         pending_items: List[Tuple[str, Document]] = []
@@ -1605,21 +1825,13 @@ class RAGManager:
         if episodic_dir.exists():
             episodic_files.extend(sorted(episodic_dir.glob("*.json")))
         
-        for episodic_path in episodic_files:
-            try:
-                with open(episodic_path, 'r', encoding='utf-8') as f:
-                    episodes = json.load(f)
-                if isinstance(episodes, list):
-                    for ep in episodes:
-                        date_str = ep.get('date', 'unknown')
-                        record_id = f"episodic:{date_str}"
-                        if record_id not in processed_records:
-                            summary = ep.get('summary', '')
-                            if summary:
-                                content = f"日付: {date_str}\n内容: {summary}"
-                                doc = Document(page_content=content, metadata={"source": episodic_path.name, "type": "episodic_memory", "date": date_str})
-                                pending_items.append((record_id, doc))
-            except Exception: pass
+        pending_items.extend(
+            _collect_episodic_documents(
+                episodic_files,
+                processed_records,
+                existing_documents=existing_documents,
+            )
+        )
 
 
         # 3. 夢日記収集
@@ -1666,7 +1878,6 @@ class RAGManager:
             total_pending = len(pending_items)
             report(f"新規追加アイテム: {total_pending}件。処理中...")
             
-            static_db = self._safe_load_index(self.static_index_path)
             SAVE_INTERVAL = 5 
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
             processed_count = 0
@@ -1721,6 +1932,8 @@ class RAGManager:
         yield (0, 0, "記憶索引を更新中: 差分を確認...")
         
         processed_records = self._load_processed_record()
+        static_db = self._safe_load_index(self.static_index_path)
+        existing_documents = _index_documents(static_db)
         pending_items: List[Tuple[str, Document]] = []
         
         # 1. 過去ログ収集
@@ -1747,21 +1960,13 @@ class RAGManager:
         if episodic_dir.exists():
             episodic_files.extend(sorted(episodic_dir.glob("*.json")))
         
-        for episodic_path in episodic_files:
-            try:
-                with open(episodic_path, 'r', encoding='utf-8') as f:
-                    episodes = json.load(f)
-                if isinstance(episodes, list):
-                    for ep in episodes:
-                        date_str = ep.get('date', 'unknown')
-                        record_id = f"episodic:{date_str}"
-                        if record_id not in processed_records:
-                            summary = ep.get('summary', '')
-                            if summary:
-                                content = f"日付: {date_str}\n内容: {summary}"
-                                doc = Document(page_content=content, metadata={"source": episodic_path.name, "type": "episodic_memory", "date": date_str})
-                                pending_items.append((record_id, doc))
-            except Exception: pass
+        pending_items.extend(
+            _collect_episodic_documents(
+                episodic_files,
+                processed_records,
+                existing_documents=existing_documents,
+            )
+        )
 
 
         # 3. 夢日記収集
@@ -1807,7 +2012,6 @@ class RAGManager:
         total_pending = len(pending_items)
         yield (0, total_pending, f"新規追加アイテム: {total_pending}件。処理中...")
         
-        static_db = self._safe_load_index(self.static_index_path)
         SAVE_INTERVAL = 5
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
         processed_count = 0
@@ -2386,9 +2590,15 @@ class RAGManager:
         # [2026-07-04 追加] episodic_memory の同一日/日付レンジ重複除去
         # [2026-07-08 追加] identity の旧版チャンクと旧diary型チャンクを除去
         current_identity_hashes = self._load_current_identity_hashes()
+        current_episode_fingerprints = (
+            self._load_current_episode_fingerprints()
+            if normalized_scope in {"all", "memory"}
+            else {}
+        )
         unique_results, content_duplicate_count, episodic_duplicate_count, identity_stale_count = _dedupe_scored_rag_results(
             scored_results,
             current_identity_hashes=current_identity_hashes,
+            current_episode_fingerprints=current_episode_fingerprints,
         )
         duplicate_count = content_duplicate_count + episodic_duplicate_count + identity_stale_count
 

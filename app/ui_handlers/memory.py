@@ -21,6 +21,7 @@ import gradio as gr
 import gemini_api, config_manager, alarm_manager, room_manager, utils, constants, chatgpt_importer, claude_importer, generic_importer
 import rag_manager
 import utils
+from dream_journal_display import format_dream_journal_entry
 from room_manager import get_room_files_paths, get_world_settings_path
 from episodic_memory_manager import EpisodicMemoryManager
 from file_lock_utils import safe_json_read, safe_text_read, safe_text_write
@@ -1382,18 +1383,7 @@ def handle_dream_journal_selection_from_dropdown(room_name: str, selected_create
         selected_dream = next((item for item in insights if item.get("created_at") == selected_created_at), None)
 
         if selected_dream:
-            # 詳細テキストを構築
-            details = (
-                f"【日付】 {selected_dream.get('created_at')}\n"
-                f"【トリガー】 {selected_dream.get('trigger_topic')}\n\n"
-                f"## 💡 得られた洞察 (Insight)\n"
-                f"{selected_dream.get('insight', '（記録なし）')}\n\n"
-                f"## 💭 夢の日記 (Dream Log)\n"
-                f"{selected_dream.get('log_entry', '（記録なし）')}\n\n"
-                f"## 🧭 今後の指針 (Strategy)\n"
-                f"{selected_dream.get('strategy', '（記録なし）')}"
-            )
-            return details
+            return format_dream_journal_entry(selected_dream)
 
         return "選択された日記が見つかりませんでした。"
     except Exception as e:
@@ -1448,16 +1438,7 @@ def handle_show_latest_dream(room_name: str):
         latest = insights[0]
         latest_created_at = latest.get("created_at", "")
 
-        details = (
-            f"【日付】 {latest.get('created_at')}\\n"
-            f"【トリガー】 {latest.get('trigger_topic')}\\n\\n"
-            f"## 💡 得られた洞察 (Insight)\\n"
-            f"{latest.get('insight', '（記録なし）')}\\n\\n"
-            f"## 💭 夢の日記 (Dream Log)\\n"
-            f"{latest.get('log_entry', '（記録なし）')}\\n\\n"
-            f"## 🧭 今後の指針 (Strategy)\\n"
-            f"{latest.get('strategy', '（記録なし）')}"
-        )
+        details = format_dream_journal_entry(latest)
 
         gr.Info("最新の夢日記を表示しています。")
         return (
@@ -2840,7 +2821,7 @@ def handle_refresh_goals(room_name: str):
         short_term = goals.get("short_term", [])
         short_lines = []
         for g in short_term:
-            status_icon = "✅" if g.get("status") == "completed" else "🎯"
+            status_icon = {"active": "🎯", "paused": "⏸️ 保留", "completed": "✅", "abandoned": "終了"}.get(g.get("status", "active"), "状態不明")
             short_lines.append(f"{status_icon} {g.get('goal', '（目標なし）')} [優先度: {g.get('priority', 1)}]")
         short_text = "\n".join(short_lines) if short_lines else "短期目標はありません"
 
@@ -2848,7 +2829,7 @@ def handle_refresh_goals(room_name: str):
         long_term = goals.get("long_term", [])
         long_lines = []
         for g in long_term:
-            status_icon = "✅" if g.get("status") == "completed" else "🌟"
+            status_icon = {"active": "🌟", "paused": "⏸️ 保留", "completed": "✅", "abandoned": "終了"}.get(g.get("status", "active"), "状態不明")
             long_lines.append(f"{status_icon} {g.get('goal', '（目標なし）')}")
         long_text = "\n".join(long_lines) if long_lines else "長期目標はありません"
 

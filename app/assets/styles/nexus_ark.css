@@ -1,3 +1,5 @@
+/* 接続設定は閉じたアコーディオン内のHTMLに依存せず、起動時から隠す。 */
+.gemini-connection-hidden { display: none !important; }
 
     /* --- [Onboarding Overlay] --- */
     #onboarding_overlay {

@@ -29,6 +29,7 @@
   },
   "triggers": { "crons": ["17 3 * * *", "*/5 * * * *"] },
   "secrets": {
+    // GEMINI_PERSONAL_2/3 は旅行前に所有者が任意で登録する予備枠です。requiredには含めません。
     "required": [
       "OWNER_AUTH_TOKEN",
       "BUNDLE_SIGNING_KEY",

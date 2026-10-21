@@ -16,6 +16,10 @@ import constants
 import room_manager
 import gemini_api
 import utils
+from agent.scenery_image_context import (
+    commit_scenery_image_context,
+    get_scenery_image_context,
+)
 import re
 import dreaming_manager
 import lite_travel
@@ -360,7 +364,8 @@ def maybe_wake_on_delegation_complete(task: dict[str, Any]) -> None:
             return
 
         api_key_name = config_manager.get_active_gemini_api_key_name(room_name)
-        if not api_key_name:
+        from gemini_connection import is_vertex
+        if not api_key_name and not is_vertex(room_name):
             decision = _record_delegation_wake_decision(task, "missing_api_key", woke=False)
             delegation_manager._append_log(task_id, "wake decision", decision)
             return
@@ -905,21 +910,23 @@ def _summarize_watchlist_content(name: str, url: str, new_content: str, diff_sum
         return fallback
     
     try:
-        from google import genai
+        import google.genai as genai
+        from gemini_connection import is_vertex
+        vertex_mode = is_vertex()
         
         # APIキーを取得
         api_key_name = config_manager.get_latest_api_key_name_from_config()
-        if not api_key_name:
+        if not api_key_name and not vertex_mode:
             print(f"  ⚠️ {name}: APIキー未設定（フォールバック使用）")
             return _create_fallback_content(new_content)
         
         api_key = config_manager.GEMINI_API_KEYS.get(api_key_name)
-        if not api_key:
+        if not api_key and not vertex_mode:
             print(f"  ⚠️ {name}: APIキーが見つからない（フォールバック使用）")
             return _create_fallback_content(new_content)
         
         # 軽量モデルを使用
-        client = genai.Client(api_key=api_key)
+        client = None if vertex_mode else genai.Client(vertexai=False, api_key=api_key)
         
         # コンテンツを制限（トークン節約）
         content_preview = new_content[:3000] if len(new_content) > 3000 else new_content
@@ -939,6 +946,14 @@ def _summarize_watchlist_content(name: str, url: str, new_content: str, diff_sum
 - 専門用語があれば簡単に説明
 - 新しい情報や重要な更新を優先
 - 出力は2〜3パラグラフ以内"""
+
+        if vertex_mode:
+            from llm_factory import LLMFactory
+            response, _used_key = LLMFactory.invoke_internal_llm(
+                internal_role="processing", prompt=prompt,
+            )
+            text = utils.extract_text_from_llm_content(response.content).strip()
+            return text or _create_fallback_content(new_content)
 
         # リトライループ
         last_error = None
@@ -1147,6 +1162,14 @@ def trigger_alarm(alarm_config, current_api_key_name):
 
     # --- [Lazy Scenery] ---
     season_en, time_of_day_en = utils._get_current_time_context(room_name)
+    effective_settings = config_manager.get_effective_settings(room_name)
+    scenery_context = get_scenery_image_context(
+        room_name,
+        settings=effective_settings,
+        season_en=season_en,
+        time_of_day_en=time_of_day_en,
+        include_virtual=False,
+    )
     location_name = None
     scenery_text = None
 
@@ -1160,7 +1183,10 @@ def trigger_alarm(alarm_config, current_api_key_name):
         "api_history_limit": str(constants.DEFAULT_ALARM_API_HISTORY_TURNS),
         "debug_mode": False,
         "history_log_path": log_f,
-        "user_prompt_parts": [{"type": "text", "text": synthesized_user_message}],
+        "user_prompt_parts": [
+            *scenery_context.parts,
+            {"type": "text", "text": synthesized_user_message},
+        ],
         "soul_vessel_room": room_name,
         "active_participants": [],
         "active_attachments": [],
@@ -1244,7 +1270,8 @@ def trigger_alarm(alarm_config, current_api_key_name):
     response_text = utils.clean_persona_text(raw_response)
 
     # AIの応答生成に成功した場合
-    if response_text and not response_text.startswith("[エラー"):
+    if response_text and not response_text.startswith(("[エラー", "[ERROR")):
+        commit_scenery_image_context(room_name, scenery_context)
         utils.save_message_to_log(log_f, "## SYSTEM:alarm", message_for_log)
         
         # 【修正】AIが既にタイムスタンプを生成している場合は除去し、正しいモデル名でシステムタイムスタンプを追加
@@ -1329,8 +1356,8 @@ def trigger_autonomous_action(
     user_memo = ""
     memo_path = os.path.join(constants.ROOMS_DIR, room_name, "user_memo.txt")
     if os.path.exists(memo_path):
-        with open(memo_path, "r", encoding="utf-8") as f:
-            user_memo = f.read().strip()
+        from file_lock_utils import safe_text_read
+        user_memo = safe_text_read(memo_path).strip()
 
     # プロンプトの構築
     now_str = datetime.datetime.now().strftime('%H:%M')
@@ -1541,14 +1568,22 @@ def trigger_autonomous_action(
         utils.save_message_to_log(log_f, "## USER:書き置き", memo_log_content)
         print(f"  📝 書き置きをログに記録しました")
         
-        # ファイルをクリア
-        with open(memo_path, "w", encoding="utf-8") as f:
-            f.write("")
-        print(f"  ✅ 書き置きをクリアしました")
+        # 読込後にLiteや本体から更新された新しい手紙は消さない。
+        if _clear_consumed_user_memo(memo_path, user_memo):
+            print("  ✅ 読み込んだ書き置きをクリアしました")
+        else:
+            print("  📝 新しい書き置きがあるため保持しました")
 
     # 共通処理（情景生成など）
     # --- [Lazy Scenery] ---
     season_en, time_of_day_en = utils._get_current_time_context(room_name)
+    scenery_context = get_scenery_image_context(
+        room_name,
+        settings=effective_settings,
+        season_en=season_en,
+        time_of_day_en=time_of_day_en,
+        include_virtual=False,
+    )
     location_name = None
     scenery_text = None
     global_model = config_manager.get_current_global_model()
@@ -1560,7 +1595,10 @@ def trigger_autonomous_action(
         "api_history_limit": str(constants.DEFAULT_ALARM_API_HISTORY_TURNS),
         "debug_mode": False,
         "history_log_path": log_f,
-        "user_prompt_parts": [{"type": "text", "text": system_instruction}],
+        "user_prompt_parts": [
+            *scenery_context.parts,
+            {"type": "text", "text": system_instruction},
+        ],
         "soul_vessel_room": room_name,
         "active_participants": [],
         "active_attachments": [],
@@ -1641,6 +1679,16 @@ def trigger_autonomous_action(
 
     # 結果の判定と保存
     clean_text = utils.remove_thoughts_from_text(final_response_text)
+
+    # A deliberate [SILENT] is still a completed provider turn.  Commit the
+    # prepared image only after a final state exists and no provider error was
+    # returned; exceptions and empty/interrupted streams remain retryable.
+    if (
+        final_state
+        and clean_text
+        and not clean_text.strip().startswith(("[エラー", "[ERROR"))
+    ):
+        commit_scenery_image_context(room_name, scenery_context)
     
     # "SILENT" が含まれているか、空の場合は何もしない
     if not clean_text or "[SILENT]" in clean_text or "[silent]" in clean_text:
@@ -2094,7 +2142,12 @@ def check_alarms():
     current_api_key = config_manager.get_latest_api_key_name_from_config()
 
     # 安全装置：もし有効なAPIキーが一つもなければ、警告を出して処理を中断する
-    if not current_api_key:
+    from gemini_connection import is_vertex
+    vertex_available = is_vertex() or any(
+        is_vertex(room_id) for _label, room_id in room_manager.get_room_list_for_ui()
+        if room_id and not str(room_id).startswith("__")
+    ) if not current_api_key else False
+    if not current_api_key and not vertex_available:
         if not _api_missing_warning_shown:
             print("警告 [アラーム]: 有効なAPIキーが設定されていないため、アラームチェックをスキップします。（以降、キーが設定されるまで警告を省略します）")
             _api_missing_warning_shown = True
@@ -2210,7 +2263,8 @@ def check_autonomous_actions():
 
                 current_api_key = config_manager.get_active_gemini_api_key_name(room_folder)
                 api_key_val = config_manager.GEMINI_API_KEYS.get(current_api_key)
-                if not api_key_val:
+                from gemini_connection import is_vertex
+                if not api_key_val and not is_vertex():
                     continue
 
                 dm = dreaming_manager.DreamingManager(room_folder, api_key_val)
@@ -2608,3 +2662,15 @@ def stop_alarm_scheduler_thread():
         alarm_thread_stop_event.set()
         start_alarm_scheduler_thread.scheduler_thread.join()
         print("アラームスケジューラスレッドの停止を要求しました.")
+
+
+def _clear_consumed_user_memo(memo_path: str, consumed_text: str) -> bool:
+    """自律処理が読んだ手紙だけを消し、その後の新しい置き手紙は保持する。"""
+    from file_lock_utils import locked_file, safe_text_write
+
+    with locked_file(memo_path) as path:
+        current = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+        if current != consumed_text.strip():
+            return False
+        safe_text_write(memo_path, "")
+        return True

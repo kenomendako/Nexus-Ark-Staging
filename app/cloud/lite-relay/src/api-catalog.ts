@@ -1,5 +1,5 @@
 export const API_SCHEMA_VERSION = 10;
-export const RELAY_RELEASE = "phase5-model-managed-output-1";
+export const RELAY_RELEASE = "phase5-key-identity-1";
 
 export const WORKER_API_CATALOG = [
   {
@@ -109,6 +109,13 @@ export const WORKER_API_CATALOG = [
   },
   {
     method: "GET",
+    path: "/v1/provider-profile-registration-options",
+    purpose: "所有者向けSecret登録枠と既存profile所有情報の確認（秘密値なし）",
+    auth: "owner",
+    implemented: true,
+  },
+  {
+    method: "GET",
     path: "/v1/provider-profiles",
     purpose: "端末・本体向け秘密除外資格情報プロファイル一覧",
     auth: "device_or_owner",
@@ -124,7 +131,7 @@ export const WORKER_API_CATALOG = [
   {
     method: "POST",
     path: "/v1/pairing-codes",
-    purpose: "短時間・単回利用の端末ペアリングコード発行",
+    purpose: "単回利用の端末ペアリングコード発行（ttl_minutesは5・15・30、未指定は従来の5分）",
     auth: "owner",
     implemented: true,
   },

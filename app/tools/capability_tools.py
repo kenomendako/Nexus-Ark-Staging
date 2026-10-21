@@ -31,7 +31,7 @@ def request_capability(category: str, intent: str, details: str = "") -> str:
       場所移動・現在地変更は world を使います（location/place/space 等の別名もworld扱い）。
       創作ノートは creative、研究ノートは research、Working Memory整理は working_memory を優先します。
       知識ベース検索は knowledge、手順記憶の確認・保存は procedure、ユーザーへの通知や手紙は outreach を使います。
-      未解決の問いの確認・追加・解決や目標管理は questions を使います。
+      未解決の問い、目標、関係の気がかり・望み、感情の持続を本人が記録・見直す時は questions を使います。
       予定・スケジュール・空き時間の確認は calendar を使います（schedule/予定/gcal 等の別名もcalendar扱い）。
       カレンダーへの予定登録（add_calendar_event）の承認確認には calendar_write を使います。
     intent: なぜその能力を使いたいか。

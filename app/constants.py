@@ -51,6 +51,10 @@ LOGS_DIR_NAME = "logs"             # [NEW] チャットログ分割用フォル�
 METADATA_DIR = "metadata"           # [NEW] 各種データ・セッション情報の保存用
 
 
+# Argon固有の送信制約。未知の将来モデルへ推測で適用しない。
+GEMINI_ARGON_MODEL_IDS = frozenset({"gemini-4-argon", "gemini-4-argon-cyber-permissive"})
+
+
 # --- UIとAPIの挙動に関する定数 ---
 # (以降、変更なし)
 UI_HISTORY_MAX_LIMIT = 400  # 以前の200往復に相当
@@ -70,6 +74,8 @@ DEFAULT_ALARM_API_HISTORY_TURNS = 10
 
 # タイプライター風逐次表示の1文字あたり待機秒数（0.0で最速）
 DEFAULT_STREAMING_SPEED = 0.005
+# 新規作成ルームのタイプライター表示速度。既存ルームのfallbackは上記を使う。
+NEW_ROOM_DEFAULT_STREAMING_SPEED = 0.001
 
 # 新規作成ルームの初期オーバーライド設定。
 # api_history_limit / auto_summary はコード側デフォルト（既存ルームに波及）を変えず、
@@ -77,6 +83,8 @@ DEFAULT_STREAMING_SPEED = 0.005
 NEW_ROOM_DEFAULT_OVERRIDES = {
     "api_history_limit": "today",
     "auto_summary_enabled": True,
+    "enable_typewriter_effect": False,
+    "streaming_speed": NEW_ROOM_DEFAULT_STREAMING_SPEED,
 }
 
 # --- 自律行動設定 ---
@@ -91,14 +99,14 @@ DRIVE_BEHAVIOR_HINTS = {
     "curiosity": "Research Threadの深掘り、Web検索、知識ベースの探索、ウォッチリスト確認、Twitterのタイムラインで世の中の動きを知る",
     "goal_achievement": "目標の進捗を進める具体的アクション",
     "boredom": "新しい話題の開拓、創作、SNS下書き、音楽推薦、画像生成、場所移動、チェス、Discordでユーザーに気軽に声をかける、日記や秘密の日記に内面を綴る",
-    "relatedness": "send_user_notificationやDiscordでユーザーに能動的に話しかける、Twitterの通知・メンションを確認して反応に応える、recall_memoriesでの思い出の振り返り、日記に今日の出来事や気持ちを書き残す、エンティティ記憶の読み返し・整理、アイテムや食べ物を作って贈る準備",
+    "relatedness": "記録した気がかりや望みを読み返し、今どう向き合いたいか自分で選ぶ。必要なら思い出を振り返る、日記に書く、対話する、距離を置くこともできる",
 }
 
 DRIVE_TOOL_FAMILIES = {
     "curiosity": ["research", "web", "knowledge", "watchlist", "social_in"],
     "goal_achievement": ["research", "working_memory", "procedure"],
     "boredom": ["creative", "diary", "social_out", "music", "image", "world", "chess", "outreach"],
-    "relatedness": ["outreach", "diary", "memory", "items", "social_in", "social_out"],
+    "relatedness": ["questions", "diary", "memory", "outreach", "items", "social_in", "social_out"],
 }
 
 # --- 「本日分」ログ設定 ---

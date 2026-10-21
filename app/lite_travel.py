@@ -22,6 +22,7 @@ import config_manager
 import constants
 import file_lock_utils
 import lite_cloud_setup
+from lite_return_memory import carry_return_pending, merge_return_pending, parse_event_datetime
 import room_manager
 import utils
 import usage_ledger
@@ -37,34 +38,84 @@ MAX_MANUAL_OUTPUT_TOKENS = 65536
 VALID_PROVIDERS = {"gemini", "openai", "anthropic", "xai", "openrouter"}
 PROVIDER_SECRET_METADATA = {
     "gemini": {
-        "bindings": ("GEMINI_PERSONAL_1",),
+        "bindings": ("GEMINI_PERSONAL_1", "GEMINI_PERSONAL_2", "GEMINI_PERSONAL_3"),
         "base_url_id": "gemini-official",
         "default_profile_id": "gemini-personal-1",
         "display_name": "Gemini（個人用1）",
+        "registration_slots": (
+            {
+                "secret_binding_id": "GEMINI_PERSONAL_1",
+                "credential_profile_id": "gemini-personal-1",
+                "display_name": "Gemini（個人用1）",
+            },
+            {
+                "secret_binding_id": "GEMINI_PERSONAL_2",
+                "credential_profile_id": "gemini-personal-2",
+                "display_name": "Gemini（個人用2）",
+            },
+            {
+                "secret_binding_id": "GEMINI_PERSONAL_3",
+                "credential_profile_id": "gemini-personal-3",
+                "display_name": "Gemini（個人用3）",
+            },
+        ),
     },
     "openai": {
         "bindings": ("OPENAI_PERSONAL_1", "OPENAI_PERSONAL_2"),
         "base_url_id": "openai-official",
         "default_profile_id": "openai-personal-1",
         "display_name": "OpenAI（個人用1）",
+        "registration_slots": (
+            {
+                "secret_binding_id": "OPENAI_PERSONAL_1",
+                "credential_profile_id": "openai-personal-1",
+                "display_name": "OpenAI（個人用1）",
+            },
+            {
+                "secret_binding_id": "OPENAI_PERSONAL_2",
+                "credential_profile_id": "openai-personal-2",
+                "display_name": "OpenAI（個人用2）",
+            },
+        ),
     },
     "anthropic": {
         "bindings": ("ANTHROPIC_PERSONAL_1",),
         "base_url_id": "anthropic-official",
         "default_profile_id": "anthropic-personal-1",
         "display_name": "Anthropic（個人用1）",
+        "registration_slots": (
+            {
+                "secret_binding_id": "ANTHROPIC_PERSONAL_1",
+                "credential_profile_id": "anthropic-personal-1",
+                "display_name": "Anthropic（個人用1）",
+            },
+        ),
     },
     "xai": {
         "bindings": ("XAI_PERSONAL_1",),
         "base_url_id": "xai-official",
         "default_profile_id": "xai-personal-1",
         "display_name": "xAI（個人用1）",
+        "registration_slots": (
+            {
+                "secret_binding_id": "XAI_PERSONAL_1",
+                "credential_profile_id": "xai-personal-1",
+                "display_name": "xAI（個人用1）",
+            },
+        ),
     },
     "openrouter": {
         "bindings": ("OPENROUTER_PERSONAL_1",),
         "base_url_id": "openrouter-official",
         "default_profile_id": "openrouter-personal-1",
         "display_name": "OpenRouter（個人用1）",
+        "registration_slots": (
+            {
+                "secret_binding_id": "OPENROUTER_PERSONAL_1",
+                "credential_profile_id": "openrouter-personal-1",
+                "display_name": "OpenRouter（個人用1）",
+            },
+        ),
     },
 }
 VALID_RETENTION_DAYS = {0, 7, 30}
@@ -88,6 +139,15 @@ class LiteTravelError(RuntimeError):
 
 class LiteTravelUncertainRequestError(LiteTravelError):
     """Worker操作の結果確認、または登録後のローカル復旧が必要。"""
+
+
+class LiteTravelHTTPError(LiteTravelError):
+    """Workerが返したHTTPエラーを、登録前の互換性判定にも使う。"""
+
+    def __init__(self, message: str, status_code: int, error_code: str | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
 
 
 def _now_iso() -> str:
@@ -155,6 +215,98 @@ def _return_journal_result(result: Dict[str, Any]) -> Dict[str, Any]:
         "imported_event_count", "imported_receipt_count", "final_route", "ack",
     }
     return {key: value for key, value in result.items() if key in allowed}
+
+
+_RECOVERY_SESSION_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+_RECOVERY_PAYLOAD_HASH_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
+
+
+def _restore_completed_return_pending(
+    travel_session_id: str,
+    room_name: str,
+    journal: Dict[str, Any],
+) -> None:
+    """completed journalのローカルbundleから、未整理markerだけを復元する。
+
+    completed fastpathはクラウドへ再接続せずに終了するため、記憶整理待ちの
+    付与だけを補う。journal・bundle・v4 payloadの対応が一つでも崩れている
+    場合は、推測で状態を変えず静かに終了する。
+    """
+    if not isinstance(journal, dict) or journal.get("persona_id") != room_name:
+        return
+    result = journal.get("result")
+    if not isinstance(result, dict):
+        return
+    if (
+        result.get("travel_session_id") != travel_session_id
+        or result.get("persona_id") != room_name
+    ):
+        return
+    through_sequence = result.get("through_sequence")
+    if isinstance(through_sequence, bool) or not isinstance(through_sequence, int) or through_sequence < 0:
+        return
+    payload_hash = result.get("payload_hash")
+    if not isinstance(payload_hash, str) or not _RECOVERY_PAYLOAD_HASH_PATTERN.fullmatch(payload_hash):
+        return
+    if not _RECOVERY_SESSION_PATTERN.fullmatch(travel_session_id):
+        return
+
+    try:
+        safe_room_name = _validate_room_name(room_name)
+        safe_root = (_metadata_root() / "recovery_bundles").resolve()
+        candidate = safe_root / (
+            f"{travel_session_id}_{_room_key(safe_room_name)}_{payload_hash[:16]}.json"
+        )
+        # session/persona/hashは上で文字種を制限しているが、解決後の親も確認して
+        # symlink経由のrecovery bundleをmetadata領域外から読まない。
+        if candidate.resolve().parent != safe_root:
+            return
+        if not candidate.is_file():
+            return
+        payload = _read_json(candidate, None)
+    except (OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError):
+        return
+    if not isinstance(payload, dict) or payload.get("schema_version") != 4:
+        return
+    try:
+        canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        canonical_hash = __import__("base64").urlsafe_b64encode(
+            hashlib.sha256(canonical.encode("utf-8")).digest()
+        ).decode("ascii").rstrip("=")
+        if not hmac.compare_digest(canonical_hash, payload_hash):
+            return
+        payload_session, payload_room, _after, payload_through = _validate_v4_persona_payload(
+            payload, safe_room_name
+        )
+        if (
+            payload_session != travel_session_id
+            or payload_room != safe_room_name
+            or payload_through != through_sequence
+        ):
+            return
+        events = payload.get("events")
+        if not isinstance(events, list):
+            return
+    except (LiteTravelError, OSError, TypeError, ValueError, OverflowError):
+        return
+
+    import_state_path = _import_state_path(safe_room_name)
+    import_operation_lock = _metadata_root() / "imports" / f"{_room_key(safe_room_name)}.operation"
+    try:
+        with file_lock_utils.locked_file(import_operation_lock.as_posix()):
+            if import_state_path.exists():
+                import_state = _read_json(import_state_path, None)
+            else:
+                import_state = {}
+            if not isinstance(import_state, dict):
+                return
+            merged = merge_return_pending(
+                import_state, events, travel_session_id, safe_room_name
+            )
+            if merged != import_state:
+                _write_json(import_state_path, merged)
+    except (LiteTravelError, OSError, TypeError, ValueError, OverflowError, json.JSONDecodeError):
+        return
 
 
 def _event_import_marker(session_id: str, room_name: str, event_id: str) -> str:
@@ -381,6 +533,35 @@ def get_secret_binding_choices(provider: str) -> list[str]:
     return list(metadata["bindings"]) if metadata else []
 
 
+def get_provider_registration_choices(provider: str) -> list[tuple[str, str]]:
+    """UIへ返す登録枠の表示名とSecret binding ID（Secret値は含めない）。"""
+    metadata = PROVIDER_SECRET_METADATA.get(str(provider or "").strip().lower())
+    if not metadata:
+        return []
+    return [
+        (
+            f"{'通常用' if index == 0 else f'予備{index}'} — {slot['display_name']}",
+            str(slot["secret_binding_id"]),
+        )
+        for index, slot in enumerate(metadata.get("registration_slots", ()))
+    ]
+
+
+def get_provider_registration_defaults(provider: str, binding_id: str) -> dict[str, str]:
+    """登録枠に対応するprofile IDと表示名を返す。不明な組み合わせは空辞書。"""
+    metadata = PROVIDER_SECRET_METADATA.get(str(provider or "").strip().lower())
+    binding = str(binding_id or "").strip()
+    if not metadata:
+        return {}
+    for slot in metadata.get("registration_slots", ()):
+        if slot["secret_binding_id"] == binding:
+            return {
+                "credential_profile_id": str(slot["credential_profile_id"]),
+                "display_name": str(slot["display_name"]),
+            }
+    return {}
+
+
 def get_local_key_choices(provider: str) -> list[tuple[str, str]]:
     """Secret値を返さず、本体内のキー参照名だけをUIへ返す。"""
     provider = str(provider or "").strip().lower()
@@ -406,6 +587,87 @@ def get_local_key_choices(provider: str) -> list[tuple[str, str]]:
     return []
 
 
+def get_local_key_metadata(provider: str, key_reference: str) -> dict[str, Any]:
+    """選択したローカルキーの非秘密メタデータだけを返す。
+
+    ``key_reference`` はUIから渡る値だが、表示名と有料設定は本体の保存済み
+    選択肢へ照合して確定する。Secretの実値は返さず、``_resolve_local_key``も
+    呼び出さないため、表示名更新の事前確認にも利用できる。
+    """
+    normalized_provider = str(provider or "").strip().lower()
+    normalized_reference = str(key_reference or "").strip()
+    if normalized_provider not in VALID_PROVIDERS or not normalized_reference:
+        raise LiteTravelError("選択したローカルAPIキーの対応が不正です。")
+    for label, reference in get_local_key_choices(normalized_provider):
+        if str(reference or "").strip() != normalized_reference:
+            continue
+        source_name = str(label or "").strip()
+        if not source_name:
+            break
+        metadata: dict[str, Any] = {
+            "source_key_reference": normalized_reference,
+            "source_key_name": source_name,
+        }
+        if normalized_provider == "gemini":
+            metadata["source_key_is_paid"] = bool(
+                config_manager.is_paid_api_key_name(source_name)
+            )
+        return metadata
+    raise LiteTravelError("選択したローカルAPIキーを本体の保存済み一覧で確認できません。")
+
+
+def build_provider_profile_display_name(
+    provider: str,
+    key_reference: str,
+    existing_display_name: str = "",
+) -> str:
+    """本体キー名を先頭にした、秘密値を含まないprofile表示名を作る。
+
+    Geminiだけは本体設定の ``paid_api_key_names`` に基づく区分を付ける。
+    これは本体の設定区分であり、実際の課金状態を検査した結果ではない。
+    既定のLite名は重ねず、利用者が付けた別名だけを後ろへ残す。
+    """
+    normalized_provider = str(provider or "").strip().lower()
+    source = get_local_key_metadata(normalized_provider, key_reference)
+    source_name = str(source["source_key_name"])
+    if normalized_provider == "gemini":
+        paid_label = "有料設定" if source.get("source_key_is_paid") else "無料設定"
+        primary = f"{source_name}（{paid_label}）"
+    else:
+        primary = source_name
+
+    # 100文字制限を守りつつ、Geminiの区分を落とさない。
+    if len(primary) > 100:
+        suffix = primary[len(source_name):] if primary.startswith(source_name) else ""
+        if suffix and len(suffix) < 100:
+            primary = f"{source_name[:100 - len(suffix)]}{suffix}"
+        else:
+            primary = primary[:100]
+
+    alias = str(existing_display_name or "").strip()
+    # 以前の区分を含む生成済み表示名は別名として重ねない。区分設定が
+    # 有料から無料へ変わった場合も、利用者が後ろへ付けた別名だけを残す。
+    for generated_marker in ("（有料設定）", "（無料設定）"):
+        generated_prefix = f"{source_name}{generated_marker}"
+        if alias.startswith(generated_prefix):
+            alias_tail = alias[len(generated_prefix):].strip()
+            alias = alias_tail[1:].strip() if alias_tail.startswith("—") else ""
+            break
+    defaults = {
+        str(slot.get("display_name") or "").strip()
+        for slot in PROVIDER_SECRET_METADATA.get(normalized_provider, {}).get(
+            "registration_slots", ()
+        )
+    }
+    # 以前に生成した同じ名前や固定の「個人用」名は重ねない。既存の
+    # 利用者別名は、キー名を先頭にしたまま補助表示として残す。
+    if alias and alias not in defaults and alias != primary and not alias.startswith(primary):
+        candidate = f"{primary} — {alias}"
+        if len(candidate) <= 100:
+            return candidate
+    return primary
+
+
 def infer_provider_from_profile_id(profile_id: str) -> str:
     """資格情報プロファイルIDとローカル登録履歴からproviderを推定する。"""
     value = str(profile_id or "").strip()
@@ -417,24 +679,45 @@ def infer_provider_from_profile_id(profile_id: str) -> str:
     return prefix if prefix in VALID_PROVIDERS else ""
 
 
-def remember_registered_provider_profile(profile_id: str, provider: str, display_name: str) -> None:
-    """Secret値を含めず、登録成功済み接続の表示用情報だけをローカルへ保存する。"""
+def remember_registered_provider_profile(
+    profile_id: str,
+    provider: str,
+    display_name: str,
+    *,
+    source_key_reference: str | None = None,
+    source_key_name: str | None = None,
+    source_key_is_paid: bool | None = None,
+) -> None:
+    """Secret値を含めず、登録済み接続の表示用情報だけをローカルへ保存する。
+
+    既存項目を丸ごと捨てず、将来追加された非秘密メタデータも保持する。
+    ``source_key_is_paid`` はGeminiの本体設定区分を保存する場合だけ指定する。
+    """
     provider = str(provider or "").strip().lower()
     profile_id = str(profile_id or "").strip()
     if provider not in VALID_PROVIDERS or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,99}", profile_id):
         raise LiteTravelError("登録済みAI接続の情報が不正です。")
-    settings = get_settings()
-    profiles = [
-        item for item in (settings.get("registered_provider_profiles") or [])
-        if isinstance(item, dict) and item.get("credential_profile_id") != profile_id
-    ]
-    profiles.append({
+    item = {
         "credential_profile_id": profile_id,
         "provider": provider,
         "display_name": str(display_name or profile_id).strip()[:100],
-    })
-    settings["registered_provider_profiles"] = profiles
-    if not config_manager.update_config_keys({"lite_travel_settings": settings}):
+    }
+    if source_key_reference is not None:
+        item["source_key_reference"] = str(source_key_reference or "").strip()
+    if source_key_name is not None:
+        item["source_key_name"] = str(source_key_name or "").strip()
+    if source_key_is_paid is not None:
+        item["source_key_is_paid"] = bool(source_key_is_paid)
+    elif provider != "gemini":
+        item.pop("source_key_is_paid", None)
+    result = config_manager.upsert_nested_config_list_item(
+        "lite_travel_settings",
+        "registered_provider_profiles",
+        item,
+        "credential_profile_id",
+        merge_existing=True,
+    )
+    if result is False:
         raise LiteTravelError("登録済みAI接続のローカル表示を更新できませんでした。")
 
 
@@ -483,6 +766,89 @@ def _resolve_wrangler_config(config_path: str) -> tuple[Path, Path]:
     return relay_root, candidate
 
 
+def _is_legacy_primary_registration(provider: str, binding_id: str) -> bool:
+    metadata = PROVIDER_SECRET_METADATA.get(provider)
+    return bool(metadata and metadata["bindings"] and metadata["bindings"][0] == binding_id)
+
+
+def _validate_provider_registration_options(
+    options: Any,
+    provider: str,
+    binding_id: str,
+    profile_id: str,
+) -> dict[str, Any]:
+    """Workerのowner-only登録枠が要求したbinding/profileを正本として持つか確認する。"""
+    if not isinstance(options, dict) or not isinstance(options.get("providers"), list):
+        raise LiteTravelError("Lite用クラウドの登録枠情報が不正です。クラウドを更新してください。")
+    provider_entry = None
+    selected: dict[str, Any] | None = None
+    for entry in options["providers"]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("provider"), str):
+            raise LiteTravelError("Lite用クラウドの登録枠情報が不正です。クラウドを更新してください。")
+        if entry["provider"] == provider:
+            if provider_entry is not None:
+                raise LiteTravelError("Lite用クラウドの登録枠情報が重複しています。")
+            provider_entry = entry
+        slots = entry.get("slots")
+        if not isinstance(slots, list):
+            raise LiteTravelError("Lite用クラウドの登録枠情報が不正です。クラウドを更新してください。")
+        for slot in slots:
+            if not isinstance(slot, dict):
+                raise LiteTravelError("Lite用クラウドの登録枠情報が不正です。クラウドを更新してください。")
+            slot_binding = slot.get("secret_binding_id")
+            slot_profile = slot.get("credential_profile_id")
+            registered_profile = slot.get("registered_profile_id")
+            if not isinstance(slot_binding, str) or not isinstance(slot_profile, str):
+                raise LiteTravelError("Lite用クラウドの登録枠情報が不正です。クラウドを更新してください。")
+            if registered_profile is not None and not isinstance(registered_profile, str):
+                raise LiteTravelError("Lite用クラウドの登録済みprofile情報が不正です。")
+            if slot_binding == binding_id:
+                if entry["provider"] != provider:
+                    raise LiteTravelError("プロバイダとCloudflare Secret bindingの対応が不正です。")
+                if selected is not None:
+                    raise LiteTravelError("指定したSecret bindingの登録枠が重複しています。")
+                selected = slot
+            if registered_profile == profile_id and slot_binding != binding_id:
+                raise LiteTravelError("指定した資格情報profileは別のSecret bindingに登録済みです。")
+
+    if provider_entry is None:
+        raise LiteTravelError("選択したプロバイダの登録枠を確認できません。クラウドを更新してください。")
+
+    if selected is None:
+        raise LiteTravelError("プロバイダとCloudflare Secret bindingの対応が不正です。クラウドを更新してください。")
+    registered_profile = selected.get("registered_profile_id")
+    if registered_profile not in {None, profile_id}:
+        raise LiteTravelError("指定したSecret bindingは別の資格情報profileに登録済みです。")
+    # 未登録枠はcanonical profileだけを受け付ける。既存profileの再登録は、
+    # 同じbindingの所有者であることを確認できた場合に限り旧custom IDも維持する。
+    if registered_profile is None and selected.get("credential_profile_id") != profile_id:
+        raise LiteTravelError("Secret bindingと資格情報profileの対応が不正です。クラウドを更新してください。")
+    return selected
+
+
+def _preflight_provider_registration(
+    provider: str,
+    binding_id: str,
+    profile_id: str,
+) -> dict[str, Any] | None:
+    """Secret送信前にWorkerの登録枠・既存所有を確認する。旧Workerのprimaryだけは従来経路を許可。"""
+    try:
+        options = _owner_request("GET", "/v1/provider-profile-registration-options")
+    except LiteTravelHTTPError as exc:
+        if exc.status_code == 404 and _is_legacy_primary_registration(provider, binding_id):
+            if profile_id != PROVIDER_SECRET_METADATA[provider]["default_profile_id"]:
+                raise LiteTravelError(
+                    "独自のAI接続IDを再登録する前にLite用クラウドを更新してください。"
+                ) from exc
+            return None
+        if exc.status_code == 404:
+            raise LiteTravelError("Lite用クラウドを更新してから予備キーを登録してください。") from exc
+        raise LiteTravelError("Lite用クラウドの登録枠を確認できないため、Secret登録を停止しました。") from exc
+    except LiteTravelUncertainRequestError as exc:
+        raise LiteTravelError("Lite用クラウドの登録枠を確認できないため、Secret登録を停止しました。") from exc
+    return _validate_provider_registration_options(options, provider, binding_id, profile_id)
+
+
 def register_provider_secret(
     provider: str,
     local_key_reference: str,
@@ -502,9 +868,15 @@ def register_provider_secret(
     profile_id = str(credential_profile_id or "").strip()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,99}", profile_id):
         raise LiteTravelError("資格情報プロファイルIDが不正です。")
-    safe_display_name = str(display_name or "").strip()
+    source_metadata = get_local_key_metadata(provider, local_key_reference)
+    safe_display_name = build_provider_profile_display_name(
+        provider,
+        local_key_reference,
+        display_name,
+    )
     if not safe_display_name or len(safe_display_name) > 100:
         raise LiteTravelError("資格情報プロファイル表示名は1〜100文字で指定してください。")
+    _preflight_provider_registration(provider, secret_binding_id, profile_id)
     secret_value = _resolve_local_key(provider, local_key_reference)
     relay_root, config_path = _resolve_wrangler_config(wrangler_config_path)
     try:
@@ -548,8 +920,132 @@ def register_provider_secret(
             "Cloudflare Secretは登録されましたが、資格情報プロファイルの同期に失敗しました。"
             "同じ内容で再実行するか、不要ならwrangler secret deleteで削除してください。"
         ) from exc
-    remember_registered_provider_profile(profile_id, provider, safe_display_name)
-    return {"registered": True, "profile": profile, "provider": provider, "credential_profile_id": profile_id}
+    remember_registered_provider_profile(
+        profile_id,
+        provider,
+        safe_display_name,
+        **source_metadata,
+    )
+    return {
+        "registered": True,
+        "profile": profile,
+        "provider": provider,
+        "credential_profile_id": profile_id,
+        "display_name": safe_display_name,
+        **source_metadata,
+    }
+
+
+def update_provider_profile_display_name(
+    provider: str,
+    local_key_reference: str,
+    secret_binding_id: str,
+    credential_profile_id: str,
+) -> Dict[str, Any]:
+    """登録済みprofileの表示名だけを本体キー名へ同期する。
+
+    登録枠とprofileの所有関係をOwner APIで二重に確認してから、既存の
+    provider/binding/base URL/enabledをそのままPUTする。Secret解決やWrangler
+    実行はこの経路では行わず、Owner APIの更新成功後だけローカル表示を更新する。
+    """
+    normalized_provider = str(provider or "").strip().lower()
+    metadata = PROVIDER_SECRET_METADATA.get(normalized_provider)
+    binding = str(secret_binding_id or "").strip()
+    profile_id = str(credential_profile_id or "").strip()
+    if not metadata or binding not in metadata["bindings"]:
+        raise LiteTravelError("プロバイダとCloudflare Secret bindingの対応が不正です。")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{2,99}", profile_id):
+        raise LiteTravelError("資格情報プロファイルIDが不正です。")
+
+    source_metadata = get_local_key_metadata(normalized_provider, local_key_reference)
+
+    # 旧Workerや未登録枠では、表示名だけの更新を許可しない。既存登録である
+    # registered_profile_idの一致まで確認し、同一bindingの別profile競合も弾く。
+    try:
+        options = _owner_request("GET", "/v1/provider-profile-registration-options")
+    except LiteTravelHTTPError as exc:
+        if exc.status_code == 404:
+            raise LiteTravelError(
+                "表示名だけの更新には、登録枠対応を確認できる最新版のLite用クラウドが必要です。"
+            ) from exc
+        raise
+    selected = _validate_provider_registration_options(
+        options,
+        normalized_provider,
+        binding,
+        profile_id,
+    )
+    if selected.get("registered_profile_id") != profile_id:
+        raise LiteTravelError("選択した登録枠はLiteに登録済みではありません。Secretの再登録は行わず、枠を確認してください。")
+
+    profiles_body = _owner_request("GET", "/v1/provider-profiles")
+    if not isinstance(profiles_body, dict) or not isinstance(profiles_body.get("profiles"), list):
+        raise LiteTravelError("Lite用クラウドの既存接続一覧が不正です。表示名を更新しませんでした。")
+    matches = [
+        item
+        for item in profiles_body["profiles"]
+        if isinstance(item, dict)
+        and str(item.get("credential_profile_id") or "").strip() == profile_id
+    ]
+    if len(matches) != 1:
+        raise LiteTravelError("更新対象のLite接続が一意に確認できません。表示名を更新しませんでした。")
+    current = matches[0]
+    current_provider = str(current.get("provider") or "").strip().lower()
+    current_base_url_id = str(current.get("allowed_base_url_id") or "").strip()
+    current_enabled = current.get("enabled")
+    if current_provider != normalized_provider:
+        raise LiteTravelError("既存Lite接続のプロバイダが登録枠と一致しません。表示名を更新しませんでした。")
+    if current_base_url_id != str(metadata["base_url_id"]):
+        raise LiteTravelError("既存Lite接続の接続先が登録枠と一致しません。表示名を更新しませんでした。")
+    if not isinstance(current_enabled, bool):
+        raise LiteTravelError("既存Lite接続の有効状態を確認できません。表示名を更新しませんでした。")
+
+    safe_display_name = build_provider_profile_display_name(
+        normalized_provider,
+        local_key_reference,
+        str(current.get("display_name") or ""),
+    )
+    saved = _owner_request(
+        "PUT",
+        f"/v1/provider-profiles/{profile_id}",
+        json_body={
+            "display_name": safe_display_name,
+            "provider": normalized_provider,
+            "secret_binding_id": binding,
+            "allowed_base_url_id": current_base_url_id,
+            "enabled": current_enabled,
+        },
+    )
+    if not isinstance(saved, dict):
+        raise LiteTravelError("表示名の更新結果を確認できませんでした。ローカル表示を更新しませんでした。")
+    if (
+        str(saved.get("credential_profile_id") or "").strip() != profile_id
+        or str(saved.get("display_name") or "").strip() != safe_display_name
+        or str(saved.get("provider") or "").strip().lower() != normalized_provider
+        or str(saved.get("allowed_base_url_id") or "").strip() != current_base_url_id
+        or saved.get("enabled") is not current_enabled
+    ):
+        raise LiteTravelError("表示名の更新結果が既存接続と一致しません。ローカル表示を更新しませんでした。")
+
+    remember_registered_provider_profile(
+        profile_id,
+        normalized_provider,
+        safe_display_name,
+        **source_metadata,
+    )
+    return {
+        "updated": True,
+        "profile": saved,
+        "provider": normalized_provider,
+        "credential_profile_id": profile_id,
+        "display_name": safe_display_name,
+        **source_metadata,
+    }
+
+
+# UI配線・隔離検証でlabel表現を使う場合の別名。display_name名を正本に
+# 残し、既存のローカル呼び出しやテストも同じ実装へ接続する。
+update_provider_profile_label = update_provider_profile_display_name
 
 
 def _assert_portable_text(name: str, value: str) -> str:
@@ -855,8 +1351,13 @@ def _owner_request(method: str, path: str, *, json_body: Any = None, timeout: fl
         body = {}
     if not response.ok:
         code = body.get("error") if isinstance(body, dict) else None
-        error_type = LiteTravelUncertainRequestError if response.status_code >= 500 else LiteTravelError
-        raise error_type(f"Worker操作に失敗しました（{code or response.status_code}）。")
+        if response.status_code >= 500:
+            raise LiteTravelUncertainRequestError(f"Worker操作に失敗しました（{code or response.status_code}）。")
+        raise LiteTravelHTTPError(
+            f"Worker操作に失敗しました（{code or response.status_code}）。",
+            response.status_code,
+            str(code) if code else None,
+        )
     return body
 
 
@@ -1409,8 +1910,16 @@ def start_multi_departure(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def create_pairing_code() -> Dict[str, Any]:
-    return _owner_request("POST", "/v1/pairing-codes")
+PAIRING_CODE_TTL_MINUTES = (5, 15, 30)
+
+
+def create_pairing_code(ttl_minutes: int = 15) -> Dict[str, Any]:
+    if type(ttl_minutes) is not int or ttl_minutes not in PAIRING_CODE_TTL_MINUTES:
+        raise LiteTravelError("コードの有効期限は5・15・30分から選んでください。")
+    result = _owner_request("POST", "/v1/pairing-codes", json_body={"ttl_minutes": ttl_minutes})
+    if not isinstance(result, dict) or type(result.get("ttl_minutes")) is not int or result["ttl_minutes"] != ttl_minutes:
+        raise LiteTravelError("Lite用クラウドがコードの期限選択に対応していません。本体の接続管理からクラウド更新を確認してください。")
+    return result
 
 
 def export_return_bundle(travel_session_id: str) -> Dict[str, Any]:
@@ -1511,10 +2020,14 @@ def _import_v4_persona_payload(payload: Dict[str, Any], payload_hash: str) -> Di
             "bundle_hashes": [], "last_sequence": 0,
         })
         if str(import_state.get("travel_session_id") or "") != session_id:
-            import_state = {
+            # セッション切替時も、未整理／整理済みmarkerと既存の未知metadataを
+            # 保持する。既存stateを先に土台へコピーしてから既知のcursorだけ更新する。
+            reset_state = dict(import_state)
+            reset_state.update({
                 "travel_session_id": session_id, "imported_event_ids": [], "imported_receipt_ids": [],
                 "bundle_hashes": [], "last_sequence": 0,
-            }
+            })
+            import_state = carry_return_pending(import_state, reset_state)
         last_sequence = int(import_state.get("last_sequence") or 0)
         if after != last_sequence and through > last_sequence:
             raise LiteTravelError("本体の帰宅cursorとWorker差分が一致しません。")
@@ -1567,7 +2080,12 @@ def _import_v4_persona_payload(payload: Dict[str, Any], payload_hash: str) -> Di
         hashes = list(import_state.get("bundle_hashes") or [])
         if payload_hash not in hashes:
             hashes.append(payload_hash)
-        _write_json(_import_state_path(room_name), {
+        try:
+            import_state = merge_return_pending(import_state, payload["events"], session_id, room_name)
+        except ValueError as exc:
+            raise LiteTravelError("帰宅会話の記憶整理待ち状態を保存できません。") from exc
+        updated_state = dict(import_state)
+        updated_state.update({
             "schema_version": SCHEMA_VERSION, "room_name": room_name, "travel_session_id": session_id,
             "imported_event_ids": sorted(imported_ids),
             "imported_receipt_ids": sorted(set(import_state.get("imported_receipt_ids") or []) | {
@@ -1575,6 +2093,7 @@ def _import_v4_persona_payload(payload: Dict[str, Any], payload_hash: str) -> Di
             }),
             "bundle_hashes": hashes, "last_sequence": max(last_sequence, through), "updated_at": _now_iso(),
         })
+        _write_json(_import_state_path(room_name), updated_state)
     return {
         "travel_session_id": session_id, "persona_id": room_name, "through_sequence": through,
         "payload_hash": payload_hash, "imported_event_count": len(new_events),
@@ -1601,9 +2120,17 @@ def online_return(travel_session_id: str) -> Dict[str, Any]:
             _save_return_operation(operation)
             existed = False
         if operation.get("status") == "completed":
+            persona_journal = operation.get("personas")
+            if isinstance(persona_journal, dict):
+                for room_name, journal in persona_journal.items():
+                    if isinstance(journal, dict):
+                        _restore_completed_return_pending(
+                            travel_session_id, str(room_name), journal
+                        )
+            journal_values = persona_journal.values() if isinstance(persona_journal, dict) else []
             stored_results = [
                 dict(item.get("result") or {})
-                for item in (operation.get("personas") or {}).values()
+                for item in journal_values
                 if isinstance(item, dict) and isinstance(item.get("result"), dict)
             ]
             return {
@@ -2104,6 +2631,17 @@ def _verify_bundle(bundle: Dict[str, Any], room_name: str, signing_key: str) -> 
 
 
 def _format_import_log(payload: Dict[str, Any], payload_hash: str, room_name: str) -> str:
+    weekday_names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+    def event_footer(value: Any) -> Optional[str]:
+        timestamp = parse_event_datetime(value)
+        if timestamp is None:
+            return None
+        return (
+            f"{timestamp:%Y-%m-%d} ({weekday_names[timestamp.weekday()]}) "
+            f"{timestamp:%H:%M:%S}"
+        )
+
     session_id = payload["session"]["travel_session_id"]
     lines = [
         f"<!-- Lite Travel Import: {payload_hash} -->",
@@ -2128,7 +2666,11 @@ def _format_import_log(payload: Dict[str, Any], payload_hash: str, room_name: st
             ])
             continue
         header = "## USER:user" if event["type"] == "user_message" else f"## AGENT:{room_name}"
-        lines.extend([header, str(event["content"]).strip(), ""])
+        content = str(event["content"]).strip()
+        footer = event_footer(event.get("created_at"))
+        if footer is not None:
+            content = f"{content}\n\n{footer}"
+        lines.extend([header, content, ""])
     lines.extend(["## SYSTEM:外出", f"Lite独立お出かけセッション {session_id} の統合終了。", ""])
     return "\n".join(lines).rstrip() + "\n\n"
 
@@ -2213,20 +2755,23 @@ def import_return_bundle(bundle: Dict[str, Any], room_name: str, signing_key: Op
         hashes = list(import_state.get("bundle_hashes") or [])
         if payload_hash not in hashes:
             hashes.append(payload_hash)
-        _write_json(
-            _import_state_path(room_name),
-            {
-                "schema_version": SCHEMA_VERSION,
-                "room_name": room_name,
-                "imported_event_ids": sorted(imported),
-                "imported_receipt_ids": sorted(
-                    set(import_state.get("imported_receipt_ids") or [])
-                    | {str(receipt["receipt_id"]) for receipt in payload["receipts"]}
-                ),
-                "bundle_hashes": hashes,
-                "updated_at": _now_iso(),
-            },
-        )
+        try:
+            import_state = merge_return_pending(import_state, payload["events"], session_id, room_name)
+        except ValueError as exc:
+            raise LiteTravelError("帰宅会話の記憶整理待ち状態を保存できません。") from exc
+        updated_state = dict(import_state)
+        updated_state.update({
+            "schema_version": SCHEMA_VERSION,
+            "room_name": room_name,
+            "imported_event_ids": sorted(imported),
+            "imported_receipt_ids": sorted(
+                set(import_state.get("imported_receipt_ids") or [])
+                | {str(receipt["receipt_id"]) for receipt in payload["receipts"]}
+            ),
+            "bundle_hashes": hashes,
+            "updated_at": _now_iso(),
+        })
+        _write_json(_import_state_path(room_name), updated_state)
     set_presence_state(room_name, "closed", session_id, imported_event_count=len(event_ids))
     return {
         "travel_session_id": session_id,

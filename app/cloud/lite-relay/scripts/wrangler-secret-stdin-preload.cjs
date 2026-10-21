@@ -1,13 +1,13 @@
 'use strict';
 
-// Wrangler 4.118.0 requires a --secrets-file path for a new Worker whose
+// Wrangler 4.149.0 requires a --secrets-file path for a new Worker whose
 // configuration declares secrets.required. This preload supplies that one
 // read from stdin-backed memory without creating a plaintext file.
 
 const fs = require('node:fs');
 const path = require('node:path');
 
-const EXPECTED_WRANGLER_VERSION = '4.118.0';
+const EXPECTED_WRANGLER_VERSION = '4.149.0';
 const VIRTUAL_SECRET_BASENAME = '.nexus-ark-virtual-secrets.json';
 const REQUIRED_SECRET_NAMES = Object.freeze([
   'OWNER_AUTH_TOKEN',
@@ -54,8 +54,8 @@ if (wranglerPackage.version !== EXPECTED_WRANGLER_VERSION) {
   fail('固定Wranglerのversionが一致しません。');
 }
 const requiredSourceFragments = [
-  'async function parseBulkInputToObject(input, includeNull = false)',
-  'const jsonFilePath = path31__namespace.default.resolve(input);',
+  'async function parseBulkInputToObject(input2, includeNull = false)',
+  'const jsonFilePath = path29__namespace.default.resolve(input2);',
   'const fileContent = readFileSync(jsonFilePath);',
   'const secretsResult = await parseBulkInputToObject(props.secretsFile);',
 ];

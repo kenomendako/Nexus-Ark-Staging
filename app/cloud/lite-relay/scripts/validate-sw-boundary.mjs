@@ -47,7 +47,7 @@ const checks = {
   travel_sw_uses_distinct_cache: /const CACHE_NAME = "nexus-ark-lite-travel-phase5-v\d+";/.test(travelServiceWorker),
   travel_manifest_is_standalone: JSON.parse(travelManifest).display === "standalone",
   travel_app_uses_common_source: travelIndexVersion === homeCacheVersion
-    && travelApp.includes(`import { travelAdapter } from "./travel-adapter.js?v=${homeCacheVersion}"`)
+    && travelApp.includes(`import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=${homeCacheVersion}"`)
     && travelApp.includes(`import { parsePairingHandoff } from "./pairing-handoff.js?v=${homeCacheVersion}"`)
     && travelApp.includes(`import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=${homeCacheVersion}"`),
   travel_app_uses_cloud_root: travelApp.includes('function isCloudHostedLite() {\n  return true;\n}')

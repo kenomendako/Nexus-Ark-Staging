@@ -195,10 +195,13 @@ async function sessionContext(db: D1Database, sessionId: string, requestedPerson
 async function historyFor(db: D1Database, session: SessionContext): Promise<CanonicalMessage[]> {
   const rows = await db
     .prepare(
-      `SELECT type, content FROM travel_events
-       WHERE travel_session_id = ? AND persona_id = ? AND status = 'committed'
-         AND type IN ('user_message', 'assistant_message') AND content IS NOT NULL
-       ORDER BY sequence_no ASC LIMIT 100`,
+      `SELECT type, content FROM (
+         SELECT sequence_no, type, content FROM travel_events
+         WHERE travel_session_id = ? AND persona_id = ? AND status = 'committed'
+           AND type IN ('user_message', 'assistant_message') AND content IS NOT NULL
+         ORDER BY sequence_no DESC LIMIT 100
+       )
+       ORDER BY sequence_no ASC`,
     )
     .bind(session.travel_session_id, session.persona_id)
     .all<{ type: string; content: string }>();
@@ -434,9 +437,17 @@ export async function streamTravelMessage(
           return;
         }
         if (normalized.terminal_status === "failed_known") {
+          const knownError = normalized.events.find((event) => event.type === "response.error");
+          // 本文や生の上流message/codeではなく、正規化された失敗分類だけを記録する。
+          const rawStatus = knownError?.type === "response.error" ? knownError.error.http_status : null;
+          const httpStatus = typeof rawStatus === "number" && Number.isInteger(rawStatus)
+            && rawStatus >= 400 && rawStatus <= 599 ? rawStatus : null;
+          await recordProviderHttpFailure(
+            db, input.client_message_id, httpStatus,
+            knownError?.type === "response.error" ? knownError.error.category : "provider_error",
+          );
           await holdBudget(db, input.client_message_id);
           await markRequestTerminal(db, input.client_message_id, "failed_known", clock().toISOString());
-          const knownError = normalized.events.find((event) => event.type === "response.error");
           controller.enqueue(
             sse(
               knownError ??
@@ -486,6 +497,7 @@ export async function streamTravelMessage(
             cacheStorageTokenHours: cacheContext?.justCreated && cacheContext.cacheCreationTokens !== null
               ? cacheContext.cacheCreationTokens * cacheContext.ttlSeconds / 3600
               : null,
+            asOf: new Date(committedAt),
           },
         );
         const receiptPayload = {

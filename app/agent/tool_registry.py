@@ -50,7 +50,7 @@ class ToolRegistry:
             "list_research_threads", "read_research_thread", "find_similar_research_threads", "update_research_thread",
             "manage_research_subscriptions",
             "add_to_watchlist", "remove_from_watchlist", "get_watchlist", "check_watchlist", "update_watchlist_interval",
-            "manage_open_questions", "manage_goals",
+            "manage_open_questions", "manage_goals", "manage_relationship_intentions", "manage_emotions",
             "read_purpose_profile", "update_active_purpose", "propose_purpose_change",
             "list_my_items", "consume_item", "gift_item_to_user", "create_food_item",
             "place_item_to_location", "pickup_item_from_location", "list_location_items", "consume_item_from_location",
@@ -90,6 +90,8 @@ class ToolRegistry:
             "roblox": "Roblox操作。自律行動での自発使用はリスクが利益を上回るため会話経由のみ",
         }
         self.AUTONOMY_REQUIRED_TOOL_NAMES = {
+            # 内面を見直す選択肢は問い/研究の反復抑制で取り上げない。実行を要求するものではない。
+            "manage_emotions",
             "request_capability",
             "read_autonomy_context",
             "start_autonomy_timeline",
@@ -114,7 +116,7 @@ class ToolRegistry:
                 "create_procedure_from_timeline",
             },
             "questions": {
-                "manage_open_questions", "manage_goals",
+                "manage_open_questions", "manage_goals", "manage_relationship_intentions", "manage_emotions",
                 "read_purpose_profile", "update_active_purpose", "propose_purpose_change",
             },
             "working_memory": {
@@ -139,7 +141,7 @@ class ToolRegistry:
             "knowledge": {"search_knowledge_base"},
             "watchlist": {"get_watchlist", "check_watchlist"},
             "questions": {
-                "manage_open_questions", "manage_goals",
+                "manage_open_questions", "manage_goals", "manage_relationship_intentions", "manage_emotions",
                 "read_purpose_profile", "update_active_purpose", "propose_purpose_change",
             },
             "agent_delegation": set(self.AGENT_DELEGATION_TOOL_NAMES),
@@ -154,7 +156,7 @@ class ToolRegistry:
             ("notes", "ノート全般", "メモ帳、Working Memory、創作ノート、研究ノートを横断して読み書きする"),
             ("working_memory", "作業記憶", "今取り組んでいる作業の短期メモを読み、更新し、スロットを切り替える"),
             ("procedure", "手順記憶", "手順の一覧確認、読み出し、保存、タイムラインからの手順化を行う"),
-            ("questions", "問いと目標", "未解決の問い（好奇心）や目標（goals）、Purpose Profileの確認・更新を扱う"),
+            ("questions", "問い・目標・関係の意図・感情", "未解決の問い、目標、本人が感じた関係の気がかり・望み、感情の見直し、Purpose Profileを確認・更新する"),
             ("image", "画像生成", "情景や作品を画像にする"),
             ("twitter", "SNS発信・確認", "SNS下書きで発信する・通知やタイムラインを確認して反応を拾う"),
             ("music", "音楽推薦", "今の空気に合う曲を推薦する"),
@@ -192,6 +194,7 @@ class ToolRegistry:
             "read_procedure",
             "manage_open_questions",
             "manage_goals",
+            "manage_relationship_intentions", "manage_emotions",
             "read_working_memory",
             "patch_working_memory",
             "send_user_notification",
@@ -212,7 +215,7 @@ class ToolRegistry:
             "world": ["list_available_locations", "set_current_location"],
             "memory": ["recall_memories", "read_entity_memory", "list_entity_memories"],
             "questions": [
-                "manage_open_questions", "manage_goals",
+                "manage_open_questions", "manage_goals", "manage_relationship_intentions", "manage_emotions",
                 "read_purpose_profile", "update_active_purpose", "propose_purpose_change",
             ],
             "diary": ["plan_diary_append", "read_diary_memory", "plan_secret_diary_edit", "read_secret_diary"],
@@ -301,6 +304,9 @@ class ToolRegistry:
             "goals": "questions",
             "問い": "questions",
             "目標": "questions",
+            "relationship": "questions",
+            "関係": "questions",
+            "気がかり": "questions",
         }
         self.TOOL_CATEGORIES: Dict[str, List[str]] = {
             "world": ["list_available_locations", "set_current_location", "read_world_settings", "plan_world_edit"],
@@ -345,7 +351,7 @@ class ToolRegistry:
                 "leave_letter_for_user", "list_my_letters",
                 "read_autonomy_context", "reflect_after_action",
                 "start_autonomy_timeline", "record_autonomy_step", "complete_autonomy_timeline",
-                "manage_open_questions", "manage_goals",
+                "manage_open_questions", "manage_goals", "manage_relationship_intentions", "manage_emotions",
             ],
             "music": ["recommend_music"],
             "procedure": ["list_procedures", "read_procedure", "save_procedure", "create_procedure_from_timeline"],
@@ -353,7 +359,7 @@ class ToolRegistry:
             "discord": ["send_discord_message", "send_discord_image"],
             "watchlist": ["add_to_watchlist", "remove_from_watchlist", "get_watchlist", "check_watchlist", "update_watchlist_interval"],
             "questions": [
-                "manage_open_questions", "manage_goals",
+                "manage_open_questions", "manage_goals", "manage_relationship_intentions", "manage_emotions",
                 "read_purpose_profile", "update_active_purpose", "propose_purpose_change",
             ],
             "items": [
