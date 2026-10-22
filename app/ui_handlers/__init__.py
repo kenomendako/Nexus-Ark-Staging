@@ -256,6 +256,10 @@ from .app_updates import (
     handle_app_update_host_migration,
     update_host_guidance,
 )
+from .browser_runtime import (
+    handle_browser_runtime_apply,
+    handle_browser_runtime_status_check,
+)
 
 GROUP_SUPERVISOR_MAX_ROUNDS_HARD_LIMIT = 3
 

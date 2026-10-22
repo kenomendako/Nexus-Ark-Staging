@@ -2720,6 +2720,21 @@ try:
                     app_update_host_confirmed = gr.Textbox(visible=False, interactive=False)
                     with gr.Group(visible=False) as update_download_group:
                         update_apply_button = gr.Button("アップデートをダウンロードして適用", variant="primary")
+                    with gr.Group(visible=True) as app_browser_runtime_group:
+                        gr.Markdown("### ブラウザ機能の準備（Windows）")
+                        app_browser_runtime_status = gr.Markdown(
+                            "「ブラウザ機能の準備を確認」を押してください。"
+                            "状態確認は外部通信をせず、インストール済みの実行環境と実versionだけを確認します。"
+                        )
+                        app_browser_runtime_check_button = gr.Button(
+                            "ブラウザ機能の準備を確認", variant="secondary"
+                        )
+                        app_browser_runtime_apply_button = gr.Button(
+                            "署名済みブラウザ用Nodeを準備",
+                            variant="primary",
+                            visible=False,
+                            interactive=False,
+                        )
 
                     with gr.Group(visible=False) as app_lite_update_group:
                         app_lite_update_status = gr.Markdown("")
@@ -8423,6 +8438,10 @@ try:
         app_update_host_outputs = [
             app_update_host_status, app_update_host_group, app_update_host_migration_button,
             app_update_host_confirmed, restart_app_button, app_update_accordion,
+        ]
+        app_browser_runtime_outputs = [
+            app_browser_runtime_status, app_browser_runtime_group,
+            app_browser_runtime_apply_button,
         ]
         demo.load(
             fn=ui_handlers.handle_initial_chat_load,
@@ -14246,6 +14265,15 @@ try:
                 }, 3000);
             }
         """
+        app_update_accordion.expand(
+            fn=ui_handlers.handle_browser_runtime_status_check,
+            inputs=None,
+            outputs=app_browser_runtime_outputs,
+            show_progress="hidden",
+            api_visibility="private",
+            concurrency_id="app-update-mutation",
+            concurrency_limit=1,
+        )
         update_check_button.click(
             fn=ui_handlers.handle_check_update,
             outputs=[update_status_markdown, update_download_group, update_apply_button]
@@ -14253,6 +14281,12 @@ try:
             fn=ui_handlers.handle_app_update_host_check,
             inputs=None, outputs=app_update_host_outputs,
             show_progress="hidden", api_visibility="private",
+        ).then(
+            fn=ui_handlers.handle_browser_runtime_status_check,
+            inputs=None, outputs=app_browser_runtime_outputs,
+            show_progress="hidden", api_visibility="private",
+            concurrency_id="app-update-mutation",
+            concurrency_limit=1,
         ).then(
             fn=ui_handlers.handle_lite_update_check,
             inputs=[current_room_name], outputs=app_lite_update_outputs,
@@ -14277,6 +14311,24 @@ try:
             outputs=[update_status_markdown],
             js="() => {" + _restart_watch_js_body + "}",
             trigger_mode="once", concurrency_limit=1,
+            concurrency_id="app-update-mutation",
+        )
+        app_browser_runtime_check_button.click(
+            fn=ui_handlers.handle_browser_runtime_status_check,
+            inputs=None,
+            outputs=app_browser_runtime_outputs,
+            show_progress="hidden",
+            api_visibility="private",
+            trigger_mode="once",
+            concurrency_limit=1,
+            concurrency_id="app-update-mutation",
+        )
+        app_browser_runtime_apply_button.click(
+            fn=ui_handlers.handle_browser_runtime_apply,
+            inputs=None,
+            outputs=app_browser_runtime_outputs,
+            trigger_mode="once",
+            concurrency_limit=1,
             concurrency_id="app-update-mutation",
         )
         lite_runtime_repair_apply_button.click(
