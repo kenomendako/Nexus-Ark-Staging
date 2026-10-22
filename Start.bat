@@ -11,22 +11,11 @@ REM Force Python to use UTF-8 mode (Safety net)
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
 
-REM Check if uv is installed
-where uv >nul 2>nul
-if %errorlevel% EQU 0 goto :FOUND_UV
-
-echo [INFO] 'uv' tool not found. Installing...
-echo.
-
-REM Install uv via PowerShell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-REM Add install paths to PATH for this session
-set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\.cargo\bin;%USERPROFILE%\AppData\Roaming\uv\bin;%PATH%"
-
-REM Verify installation
-where uv >nul 2>nul
-if %errorlevel% NEQ 0 goto :UV_INSTALL_FAILED
+REM Repair the downloader before any dependency or Python download.
+set "PATH=%USERPROFILE%\.local\bin;%PATH%"
+if not exist "app\release\RepairUpdateCertificates.ps1" goto :UV_INSTALL_FAILED
+powershell -NoProfile -ExecutionPolicy Bypass -File "%CD%\app\release\RepairUpdateCertificates.ps1"
+if errorlevel 1 goto :UV_INSTALL_FAILED
 
 :FOUND_UV
 REM Check for app directory

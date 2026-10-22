@@ -37,6 +37,7 @@ from lite_runtime import LiteRuntimeError, LiteRuntimePaths, resolve_lite_runtim
 from update_host.contracts import is_python_bytecode_cache, validate_release_tree
 from update_host.runtime import validate_bound_runtime
 from update_manager import legacy_overlay_allowed, protected_update_host_ready
+from tls_security import create_tls_context
 
 
 MINIMUM_NODE_MAJOR = 22
@@ -3290,7 +3291,7 @@ def _cloudflare_api_json(
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=60, context=create_tls_context()) as response:
             result = json.load(response)
     except urllib.error.HTTPError as exc:
         try:

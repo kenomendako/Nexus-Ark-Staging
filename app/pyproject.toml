@@ -38,6 +38,8 @@ dependencies = [
     "pywebpush>=2.0.3",
     "schedule==1.2.2",
     "requests==2.32.5",
+    # eMudhra/emSign CA incident: keep the restored safe root bundle.
+    "certifi==2026.10.19",
     # --- File & System Utilities ---
     "filetype==1.2.0",
     "filelock>=3.20.0",

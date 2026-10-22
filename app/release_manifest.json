@@ -1,13 +1,13 @@
 {
   "components": {
     "app": {
-      "version": "0.5.0.62"
+      "version": "0.5.0.64"
     },
     "python_env": {
       "declared_min_python_version": "3.10",
-      "lock_sha256": "9a9ef5fe17747538573207128358784a4e4fb3887ab5a55b4431b8db5620d5a4",
+      "lock_sha256": "d4d923c43b79d802908e73f2d9c41400838f58570119863e66b49aac7c9c52b5",
       "present": true,
-      "pyproject_sha256": "8a1c0ff3b3b9edc999b52f9dcd9c838794834385781b7f2ca97c856992e89764",
+      "pyproject_sha256": "8521078aa89c6680f93d91e71c0af686a98e37d223142f0e189b5edd2d56f811",
       "requires_python": ">=3.11, <3.14"
     },
     "runtime": {
@@ -37,8 +37,8 @@
     {
       "kind": "owned",
       "path": "RELEASE_NOTES.md",
-      "sha256": "057bb435cfd4daaec2dd2661274f2677d8676edcd8ed93c75a9e238636d98e06",
-      "size": 56532
+      "sha256": "a27dbcfec9148b52e650e843ba88ea1d400d1a10a1e85bd869b82b17125f7572",
+      "size": 56792
     },
     {
       "kind": "owned",
@@ -607,8 +607,8 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/11_troubleshooting.md",
-      "sha256": "0c165051ac029c8069eba0b898cf874fdf80e10f6eeef3ba905a7e52dd545b20",
-      "size": 18783
+      "sha256": "07628f076dca0568eaf517c560713b1273231a949b0777e9b8f164110d11ff2d",
+      "size": 20282
     },
     {
       "kind": "owned",
@@ -637,20 +637,20 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.faiss",
-      "sha256": "ff5b44dd7d4c72e5d8f48514b953990eb19d07300d750a9ad47c7f6ceb0eaa93",
-      "size": 6131757
+      "sha256": "32d7882d64ea409556153970627685a439890a27d4806c4daa3faf7ddb380592",
+      "size": 6168621
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.pkl",
-      "sha256": "070f2d9f0bc6023234b33c4b19f386cd11d5c9c3bdaa1416d4d57205594aa6c7",
-      "size": 322155
+      "sha256": "fccb120cfba8a212103f3bfd123c45f48f1c1479e954814463ebcc6727694a99",
+      "size": 324457
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/model_info.json",
-      "sha256": "60f1c8b1778ddb8fa12cb5687520475dda1d4720a8c9c40e0a3bb32d374bec30",
-      "size": 175
+      "sha256": "b963d831553ca18626b0a4822740f5b0b91a9b87f703f4e060596bd417490701",
+      "size": 174
     },
     {
       "kind": "owned",
@@ -1309,8 +1309,8 @@
     {
       "kind": "owned",
       "path": "custom_tool_manager.py",
-      "sha256": "efef9fe918a5d11ada853c875df77b4c77335f4fd25b0d7ef350cb09d5e4ad8a",
-      "size": 27179
+      "sha256": "fadd9a5858527ca90ae51b3774023bf6923a8a877992a34c23907e266d680ad8",
+      "size": 34025
     },
     {
       "kind": "owned",
@@ -1417,8 +1417,8 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/11_troubleshooting.md",
-      "sha256": "0c165051ac029c8069eba0b898cf874fdf80e10f6eeef3ba905a7e52dd545b20",
-      "size": 18783
+      "sha256": "07628f076dca0568eaf517c560713b1273231a949b0777e9b8f164110d11ff2d",
+      "size": 20282
     },
     {
       "kind": "owned",
@@ -1537,8 +1537,8 @@
     {
       "kind": "owned",
       "path": "google_auth_helper.py",
-      "sha256": "8b4c99002147c865017b82aa2cf392c2ca36e597b3120c43ea13cacfab3d1223",
-      "size": 11589
+      "sha256": "251240ee4fdd73d66dc26e336ced19dea83204cf59e97fc44b2d4972e58ea2ab",
+      "size": 11664
     },
     {
       "kind": "owned",
@@ -1573,8 +1573,8 @@
     {
       "kind": "owned",
       "path": "install.js",
-      "sha256": "f3b5c512a537f0e1301d01bed43d260ec1df480b1506e1a07c124ec0197b8e2b",
-      "size": 602
+      "sha256": "640aa5cf955700a35048dc82381358d0674b9de29de47f7cb8038c8a67c6b5b0",
+      "size": 724
     },
     {
       "kind": "owned",
@@ -1591,8 +1591,8 @@
     {
       "kind": "owned",
       "path": "lite_cloud_setup.py",
-      "sha256": "cae45142a58500988ebd465e2320ff597e70aec66cf197fb56048b44e8fd2eef",
-      "size": 195818
+      "sha256": "56cd05390a3febc378f0791cc0530853822138cb9f09fd988f5215060bbdddfe",
+      "size": 195892
     },
     {
       "kind": "owned",
@@ -1873,14 +1873,26 @@
     {
       "kind": "owned",
       "path": "pyproject.toml",
-      "sha256": "8a1c0ff3b3b9edc999b52f9dcd9c838794834385781b7f2ca97c856992e89764",
-      "size": 2845
+      "sha256": "8521078aa89c6680f93d91e71c0af686a98e37d223142f0e189b5edd2d56f811",
+      "size": 2942
     },
     {
       "kind": "owned",
       "path": "rag_manager.py",
       "sha256": "691cc2f3945c5dfb9290f25e4922064d9add9f90bf7b3cee06e3d205ac93cd81",
       "size": 145005
+    },
+    {
+      "kind": "owned",
+      "path": "release/RepairUpdateCertificates.ps1",
+      "sha256": "4b4e3ae6bd6a1f65537d511296239210f8f4cdcfda35e980aa6e5dde6dac292c",
+      "size": 6760
+    },
+    {
+      "kind": "owned",
+      "path": "release/check_uv_security.cjs",
+      "sha256": "abbe4b95aad668c0282b7f19b6dc0ae06c4e6a2fc6eff7977bc3cc7b100ce170",
+      "size": 591
     },
     {
       "kind": "owned",
@@ -1903,8 +1915,8 @@
     {
       "kind": "owned",
       "path": "release/update_host_bridge/Start.bat",
-      "sha256": "34529f95471c044bf199929cc24523f201f71588e066b74616e416523042770d",
-      "size": 1118
+      "sha256": "b58de9707250d4657d199025b75a1e3c50c315272362c1fe593470b2a163ec20",
+      "size": 2035
     },
     {
       "kind": "owned",
@@ -2113,8 +2125,8 @@
     {
       "kind": "owned",
       "path": "site/guide/11_troubleshooting.html",
-      "sha256": "1d199bcee142eac150f62d39a220798bb0ec2c35bbdabdab4c6a38289060f806",
-      "size": 22735
+      "sha256": "7c39096d7cdcf6f8df72a20bae1bc0862be6d8341aa5edcc6e403870465051e5",
+      "size": 24289
     },
     {
       "kind": "owned",
@@ -2211,6 +2223,12 @@
       "path": "timers.py",
       "sha256": "495051c5920a7e486e5f35f45f1e1249887cecf8fe1654c39f5971aa743298c9",
       "size": 38110
+    },
+    {
+      "kind": "owned",
+      "path": "tls_security.py",
+      "sha256": "bfee575386e4a73fa8c02fe38ae9e2481c83216cf02e68366b179833e6bc760b",
+      "size": 669
     },
     {
       "kind": "owned",
@@ -2443,8 +2461,8 @@
     {
       "kind": "owned",
       "path": "tools/weather_mcp_server.py",
-      "sha256": "806e6c5d63c6b3ed6e0308d714863dfe340098885f6c75ced9863de72a816659",
-      "size": 2185
+      "sha256": "d3c3e5d196e3ae0983c15e5cc53d828db1498c14386c9cc1a68afdf2130b3d4c",
+      "size": 2582
     },
     {
       "kind": "owned",
@@ -2611,8 +2629,8 @@
     {
       "kind": "owned",
       "path": "update.js",
-      "sha256": "6730913e961ce990e618cfc4108d3fb1e88f798cda61c3c3e601a65ea94744be",
-      "size": 717
+      "sha256": "6c4a0a3da0e5e52e90927a74b735e6c0ad2f0972073c1250c58e53a80d126ac1",
+      "size": 1058
     },
     {
       "kind": "owned",
@@ -2683,13 +2701,13 @@
     {
       "kind": "owned",
       "path": "uv.lock",
-      "sha256": "9a9ef5fe17747538573207128358784a4e4fb3887ab5a55b4431b8db5620d5a4",
-      "size": 769484
+      "sha256": "d4d923c43b79d802908e73f2d9c41400838f58570119863e66b49aac7c9c52b5",
+      "size": 769571
     },
     {
       "kind": "owned",
       "path": "version.json",
-      "sha256": "84e2779f8ea354dadc1d2ef5d9927fc1452edfa5ed0a2d5db0811fa629199d98",
+      "sha256": "4d0d006883d2eac82bba52e898d1304bf02f5bc2d7662a53f3eb87d972b7dc15",
       "size": 243
     },
     {
@@ -2713,8 +2731,8 @@
     {
       "kind": "owned",
       "path": "weather_service.py",
-      "sha256": "69476a5d30d3b3bf82d05aa6761226cd524121b35e019f3c299ebda1db4f4b2b",
-      "size": 13540
+      "sha256": "ad9110961c5d1b4341b8fde654c8436a25de26fb387568c65a0d0479e26a97d0",
+      "size": 13708
     },
     {
       "kind": "owned",
@@ -2723,12 +2741,12 @@
       "size": 1947
     }
   ],
-  "file_count": 450,
+  "file_count": 453,
   "persistent_path_catalog": {
     "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
     "schema_version": 1
   },
-  "release_version": "0.5.0.62",
+  "release_version": "0.5.0.64",
   "required_entries": [
     "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
     "cloud/lite-relay/README.md",
@@ -2751,8 +2769,11 @@
     "playwright_node.py",
     "playwright_utils.py",
     "pyproject.toml",
+    "release/RepairUpdateCertificates.ps1",
+    "release/check_uv_security.cjs",
     "runtime_tuf.py",
     "site/guide/07a_lite_cloud_setup.html",
+    "tls_security.py",
     "uv.lock",
     "version.json"
   ],
@@ -2761,5 +2782,5 @@
     "cpu": "x86_64",
     "platform": "windows"
   },
-  "total_bytes": 27200972
+  "total_bytes": 27262093
 }
