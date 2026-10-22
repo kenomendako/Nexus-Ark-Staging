@@ -17,6 +17,108 @@ param()
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $script:IsDotSourced = ($MyInvocation.InvocationName -eq '.')
+$script:PreparationProgress = $null
+
+function Open-PreparationProgress {
+    param([Parameter(Mandatory = $true)][string]$TargetRoot)
+
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    $form = New-Object System.Windows.Forms.Form
+    try {
+        $form.Text = 'Nexus Ark — 更新の準備中'
+        $form.ClientSize = New-Object System.Drawing.Size(600, 220)
+        $form.StartPosition = 'CenterScreen'
+        $form.FormBorderStyle = 'FixedDialog'
+        $form.ControlBox = $false
+        $form.AutoScaleMode = 'Dpi'
+
+        $target = New-Object System.Windows.Forms.Label
+        $target.SetBounds(20, 16, 560, 42)
+        $target.Text = "今まで使っているフォルダー：`r`n$TargetRoot"
+        $target.AutoEllipsis = $true
+
+        $stage = New-Object System.Windows.Forms.Label
+        $stage.SetBounds(20, 68, 560, 38)
+        $stage.Text = '選択したフォルダーを確認しています…'
+
+        $bar = New-Object System.Windows.Forms.ProgressBar
+        $bar.SetBounds(20, 116, 560, 18)
+        $bar.Style = 'Marquee'
+        $bar.MarqueeAnimationSpeed = 30
+
+        $elapsed = New-Object System.Windows.Forms.Label
+        $elapsed.SetBounds(20, 144, 560, 22)
+        $elapsed.Text = '準備を開始しています…'
+
+        $note = New-Object System.Windows.Forms.Label
+        $note.SetBounds(20, 174, 560, 38)
+        $note.Text = "準備には数分かかることがあります。このままお待ちください。`r`n完了すると、選択したフォルダーのStart.batを起動します。"
+
+        $form.Controls.AddRange(@($target, $stage, $bar, $elapsed, $note))
+        $script:PreparationProgress = @{
+            Form = $form
+            StageLabel = $stage
+            ElapsedLabel = $elapsed
+            ProgressBar = $bar
+            NoteLabel = $note
+            Started = [Diagnostics.Stopwatch]::StartNew()
+        }
+        $form.Show()
+        Update-PreparationProgress
+    }
+    catch {
+        $form.Dispose()
+        $script:PreparationProgress = $null
+        throw
+    }
+}
+
+function Update-PreparationProgress {
+    if ($null -eq $script:PreparationProgress) { return }
+    $progress = $script:PreparationProgress
+    if ($progress.Form.IsDisposed) { return }
+    $progress.ElapsedLabel.Text = '準備開始から {0} 秒' -f [int]$progress.Started.Elapsed.TotalSeconds
+    [System.Windows.Forms.Application]::DoEvents()
+}
+
+function Set-PreparationStatus {
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    Write-Host ('[Nexus Ark] {0}' -f $Text)
+    if ($null -ne $script:PreparationProgress -and -not $script:PreparationProgress.Form.IsDisposed) {
+        $script:PreparationProgress.StageLabel.Text = $Text
+        Update-PreparationProgress
+    }
+}
+
+function Close-PreparationProgress {
+    if ($null -eq $script:PreparationProgress) { return }
+    $progress = $script:PreparationProgress
+    $script:PreparationProgress = $null
+    $progress.Started.Stop()
+    $progress.Form.Dispose()
+}
+
+function Wait-PreparationProcess {
+    param([Parameter(Mandatory = $true)][Diagnostics.Process]$Process)
+
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $nextNotice = 5
+    try {
+        while (-not $Process.WaitForExit(250)) {
+            Update-PreparationProgress
+            if ($watch.Elapsed.TotalSeconds -ge $nextNotice) {
+                Write-Host ('[Nexus Ark] 更新用ツールを準備中です。このままお待ちください（{0} 秒経過）。' -f [int]$watch.Elapsed.TotalSeconds)
+                $nextNotice += 5
+            }
+        }
+        $Process.WaitForExit()
+        Update-PreparationProgress
+    }
+    finally {
+        $watch.Stop()
+    }
+}
 
 function Get-NormalizedPath {
     param([Parameter(Mandatory = $true)][string]$Path)
@@ -354,6 +456,9 @@ function Show-PreparationMessage {
     $buttonValue = [System.Windows.Forms.MessageBoxButtons]::$Buttons
     $defaultButton = [System.Windows.Forms.MessageBoxDefaultButton]::Button1
     if ($Buttons -eq 'YesNo') { $defaultButton = [System.Windows.Forms.MessageBoxDefaultButton]::Button2 }
+    if ($null -ne $script:PreparationProgress -and -not $script:PreparationProgress.Form.IsDisposed) {
+        return [System.Windows.Forms.MessageBox]::Show($script:PreparationProgress.Form, $Text, 'Nexus Ark', $buttonValue, $icon, $defaultButton)
+    }
     return [System.Windows.Forms.MessageBox]::Show($Text, 'Nexus Ark', $buttonValue, $icon, $defaultButton)
 }
 
@@ -421,9 +526,13 @@ function Invoke-UvRepair {
     $psi.EnvironmentVariables['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'
     $process = [Diagnostics.Process]::Start($psi)
     if ($null -eq $process) { throw 'uv修復プロセスを起動できません。' }
-    $process.WaitForExit()
-    $exitCode = $process.ExitCode
-    $process.Dispose()
+    try {
+        Wait-PreparationProcess -Process $process
+        $exitCode = $process.ExitCode
+    }
+    finally {
+        $process.Dispose()
+    }
     if ($exitCode -ne 0) {
         throw ('uv修復が失敗しました（終了コード {0}）。' -f $exitCode)
     }
@@ -518,18 +627,33 @@ function Invoke-PreparedTarget {
     }
     $mutex = Enter-PreparationMutex $TargetRoot
     try {
+        Set-PreparationStatus -Text '選択したフォルダーと、Nexus Arkが終了していることを確認しています…'
         $target = Assert-TargetRoot $TargetRoot
+        Set-PreparationStatus -Text '停止とバックアップの確認画面で、内容をご確認ください。'
         if (-not (Confirm-BackupAndShutdown -TargetRoot $target.Root)) {
+            Set-PreparationStatus -Text '準備を中止しました。Nexus Arkは起動していません。'
             return $false
         }
+        Set-PreparationStatus -Text '更新用ツールを確認・準備しています。取得が必要な場合は数分かかることがあります。'
         Invoke-UvRepair $Source | Out-Null
         # The user may have started the old application while the repair was
         # running.  Recheck both process and lock state immediately before
         # handing control to cmd.exe.
+        Set-PreparationStatus -Text 'ツールの準備が終わりました。起動前の最終確認をしています…'
         Assert-NexusLockClear (Join-Path $target.App 'nexus_ark.lock')
         Assert-TargetProcessesStopped $target.Root
+        Set-PreparationStatus -Text '最終確認が終わりました。今までのフォルダーからNexus Arkを起動しています…'
         Start-SelectedRoot $target | Out-Null
-        Show-PreparationMessage -Text '元のNexus Arkの起動を開始しました。起動後、通常の画面から自動更新を実行してください。' -Kind Information -Buttons OK | Out-Null
+        if ($null -ne $script:PreparationProgress) {
+            $script:PreparationProgress.Form.Text = 'Nexus Ark — 準備完了'
+            $script:PreparationProgress.ProgressBar.Style = 'Continuous'
+            $script:PreparationProgress.ProgressBar.Value = 100
+            $script:PreparationProgress.Started.Stop()
+            $script:PreparationProgress.NoteLabel.Text = "準備ツールの処理は完了です。起動後は、通常の画面から自動更新してください。`r`n今後も、今まで使っているフォルダーのStart.batから起動します。"
+        }
+        Set-PreparationStatus -Text '準備が完了しました。選択したNexus Arkの起動を開始しました。'
+        $completeMessage = "準備が完了しました。今まで使っているNexus Arkの起動を開始しました。`r`n`r`n起動するフォルダー：`r`n$($target.Root)`r`n`r`n起動後、通常の画面から自動更新を実行してください。今後もこのフォルダーのStart.batを使います。"
+        Show-PreparationMessage -Text $completeMessage -Kind Information -Buttons OK | Out-Null
         return $true
     }
     finally {
@@ -543,22 +667,35 @@ function Invoke-PreparationMain {
     param([string]$PackageRoot = '')
 
     try {
+        Set-PreparationStatus -Text '準備ツールを確認しています…'
         $source = Get-PackageSource -PackageRoot $PackageRoot
+        Set-PreparationStatus -Text 'フォルダー選択画面で、今まで使っているNexus Arkフォルダーを選んでください。'
         $targetRoot = Select-TargetRoot
         if ([string]::IsNullOrWhiteSpace([string]$targetRoot)) {
             return 0
         }
+        Open-PreparationProgress -TargetRoot $targetRoot
         Invoke-PreparedTarget -Source $source -TargetRoot $targetRoot | Out-Null
         return 0
     }
     catch {
         try {
+            if ($null -ne $script:PreparationProgress) {
+                $script:PreparationProgress.Form.Text = 'Nexus Ark — 準備を完了できませんでした'
+                $script:PreparationProgress.ProgressBar.Style = 'Continuous'
+                $script:PreparationProgress.Started.Stop()
+                $script:PreparationProgress.NoteLabel.Text = "準備ツールはここで停止しています。表示された案内をご確認ください。`r`n準備が完了するまでは、本体の自動更新へ進まないでください。"
+            }
+            Set-PreparationStatus -Text '準備を完了できませんでした。表示された案内をご確認ください。'
             Show-PreparationMessage -Text $_.Exception.Message -Kind Error -Buttons OK | Out-Null
         }
         catch {
             Write-Error $_.Exception.Message
         }
         return 1
+    }
+    finally {
+        Close-PreparationProgress
     }
 }
 

@@ -17,10 +17,17 @@ def update_host_guidance(status):
     message = html.escape(str(status.get("message", "更新方式の状態を確認できませんでした。")))
     if state == "migration_pending":
         return (
-            "### ⏳ 更新方式の移行準備ができました\n\n"
-            "Nexus Arkを通常の方法で終了してください。移行処理の完了を待ち、"
-            "同じ **Start.bat** から起動し直してください。\n\n"
+            "### ⏳ 移行の準備ができました。本体を終了してください\n\n"
+            "Nexus Arkを通常の方法で終了してください。別の移行状況ウィンドウで"
+            "**移行完了**の表示を確認してから、今まで使っているフォルダーの"
+            " **Start.bat** から起動し直してください。\n\n"
             "この画面の再起動ボタンは、移行が完了するまで使用できません。"
+        )
+    if state == "ready":
+        return (
+            "### ✅ 更新方式の準備は完了しています\n\n"
+            "新しい更新方式を利用できます。移行操作のやり直しは不要です。"
+            "今後も、今まで使っているフォルダーの **Start.bat** から起動してください。"
         )
     if state == "migration_required":
         return (
@@ -46,8 +53,11 @@ def _host_view(status):
     needs_attention = state not in _READY_STATES
     return (
         gr.update(value=update_host_guidance(status)),
-        gr.update(visible=needs_attention),
-        gr.update(interactive=state == "migration_required" and status.get("can_prepare") is True),
+        gr.update(visible=needs_attention or state == "ready"),
+        gr.update(
+            visible=state == "migration_required",
+            interactive=state == "migration_required" and status.get("can_prepare") is True,
+        ),
         "",
         gr.update(interactive=state not in {"migration_pending", "migration_blocked"} and state in _READY_STATES | {"migration_required"}),
         gr.update(open=True) if needs_attention else gr.update(),

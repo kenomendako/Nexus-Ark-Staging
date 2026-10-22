@@ -2,6 +2,8 @@
 "%SystemRoot%\System32\chcp.com" 65001 >nul
 setlocal
 cd /d "%~dp0"
+echo [Nexus Ark] 更新の準備を開始しています。
+echo [Nexus Ark] フォルダー選択画面で、今まで使っているNexus Arkフォルダーを選んでください。
 if not exist "%~dp0app\release\PrepareExistingUpdate.ps1" (
     echo [Nexus Ark] 準備ツールが見つかりません。ZIPを新しいフォルダーへすべて展開してください。
     pause

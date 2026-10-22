@@ -2723,8 +2723,7 @@ try:
                     with gr.Group(visible=True) as app_browser_runtime_group:
                         gr.Markdown("### ブラウザ機能の準備（Windows）")
                         app_browser_runtime_status = gr.Markdown(
-                            "「ブラウザ機能の準備を確認」を押してください。"
-                            "状態確認は外部通信をせず、インストール済みの実行環境と実versionだけを確認します。"
+                            "ブラウザ機能の状態を確認します。結果表示まで少しお待ちください。"
                         )
                         app_browser_runtime_check_button = gr.Button(
                             "ブラウザ機能の準備を確認", variant="secondary"
@@ -14266,7 +14265,7 @@ try:
             }
         """
         app_update_accordion.expand(
-            fn=ui_handlers.handle_browser_runtime_status_check,
+            fn=ui_handlers.handle_browser_runtime_status_check_with_progress,
             inputs=None,
             outputs=app_browser_runtime_outputs,
             show_progress="hidden",
@@ -14282,7 +14281,7 @@ try:
             inputs=None, outputs=app_update_host_outputs,
             show_progress="hidden", api_visibility="private",
         ).then(
-            fn=ui_handlers.handle_browser_runtime_status_check,
+            fn=ui_handlers.handle_browser_runtime_status_check_with_progress,
             inputs=None, outputs=app_browser_runtime_outputs,
             show_progress="hidden", api_visibility="private",
             concurrency_id="app-update-mutation",
@@ -14296,7 +14295,7 @@ try:
         app_update_host_migration_button.click(
             fn=None, inputs=None, outputs=[app_update_host_confirmed],
             js="""() => {
-                return confirm('本体を新しい更新方式へ移行しますか？\\n現在の本体は変更せず、通常終了後に起動用ファイルを切り替えます。\\n完了を待ち、同じStart.batから起動し直してください。') ? 'true' : '';
+                return confirm('本体を新しい更新方式へ移行しますか？\\n現在の本体は変更せず、通常終了後に起動用ファイルを切り替えます。\\n別の移行状況ウィンドウで完了を確認してから、今までのStart.batで起動してください。') ? 'true' : '';
             }""",
             queue=False, api_visibility="private",
         )
@@ -14314,10 +14313,10 @@ try:
             concurrency_id="app-update-mutation",
         )
         app_browser_runtime_check_button.click(
-            fn=ui_handlers.handle_browser_runtime_status_check,
+            fn=ui_handlers.handle_browser_runtime_status_check_with_progress,
             inputs=None,
             outputs=app_browser_runtime_outputs,
-            show_progress="hidden",
+            show_progress="minimal",
             api_visibility="private",
             trigger_mode="once",
             concurrency_limit=1,

@@ -99,15 +99,16 @@ def _ready_view(
         logger.error("Browser runtime binding check failed: %s", type(exc).__name__)
         return _apply_failure_view() if failure_on_error else _signed_update_required_view()
     safe_version = html.escape(version)
-    acquisition = (
-        "署名済みの実行環境の取得・検証も完了しました。\n\n"
-        if acquired
-        else ""
-    )
+    acquisition = "署名済みの実行環境の取得・検証も完了しました。\n\n" if acquired else ""
     return _update_view(
-        "### ✅ ブラウザ機能の準備済み\n\n"
-        f"{acquisition}署名済みの実行環境を確認しました。準備済み Node {safe_version} を使用します。\n\n"
-        "状態確認は外部通信をせず、インストール済みの実行環境と実versionだけを確認します。",
+        "### ✅ ブラウザ機能の準備が完了しました\n\n"
+        "Nexus Arkを通常どおりご利用いただけます。\n\n"
+        f"準備済み Node {safe_version} を使用します。\n\n"
+        "Lite独立モードの導入を続ける場合は、**外部接続 → Lite・お出かけ → 初回設定・接続管理**へ進んでください。"
+        "Liteの初回設定は、この後に行います。\n\n"
+        f"{acquisition}"
+        "署名済みの実行環境と、インストール済みNodeの実際の版を確認しました。"
+        "この状態確認は外部通信を行いません。",
         prepare_visible=False,
         prepare_interactive=False,
     )
@@ -126,7 +127,7 @@ def _runtime_view(manager: Any, *, mode: str | None = None) -> tuple[Any, Any, A
         return _update_view(
             "### 🔄 ブラウザ機能の準備には更新方式の移行が必要です\n\n"
             "上の「新しい更新方式へ移行」を押し、Nexus Arkを通常どおり終了して、"
-            "同じStart.batから起動し直してください。PowerShellを手動で操作する必要はありません。",
+            "別の移行状況ウィンドウで完了を確認してから、同じStart.batで起動し直してください。PowerShellを手動で操作する必要はありません。",
             prepare_visible=False,
             prepare_interactive=False,
         )
@@ -155,9 +156,9 @@ def _apply_failure_view() -> tuple[Any, Any, Any]:
     )
 
 
-def handle_browser_runtime_status_check(*, manager_factory: Callable[[], Any] | None = None):
-    """外部通信をせず、ブラウザruntimeの状態と実bindingを確認する。"""
-
+def _status_check_view(
+    *, manager_factory: Callable[[], Any] | None = None
+) -> tuple[Any, Any, Any]:
     try:
         host_status = inspect_update_host_status()
     except Exception as exc:
@@ -180,6 +181,25 @@ def handle_browser_runtime_status_check(*, manager_factory: Callable[[], Any] | 
             prepare_visible=False,
             prepare_interactive=False,
         )
+
+
+def handle_browser_runtime_status_check(*, manager_factory: Callable[[], Any] | None = None):
+    """外部通信をせず、ブラウザruntimeの状態と実bindingを確認する。"""
+
+    return _status_check_view(manager_factory=manager_factory)
+
+
+def handle_browser_runtime_status_check_with_progress(
+    *, manager_factory: Callable[[], Any] | None = None
+):
+    """確認中の表示を先に返してから、既存の状態確認結果を返す。"""
+
+    yield _update_view(
+        "ブラウザ機能の状態を確認しています。表示まで少しお待ちください。",
+        prepare_visible=False,
+        prepare_interactive=False,
+    )
+    yield handle_browser_runtime_status_check(manager_factory=manager_factory)
 
 
 def handle_browser_runtime_apply(*, manager_factory: Callable[[], Any] | None = None):
@@ -215,4 +235,5 @@ def handle_browser_runtime_apply(*, manager_factory: Callable[[], Any] | None = 
 __all__ = [
     "handle_browser_runtime_apply",
     "handle_browser_runtime_status_check",
+    "handle_browser_runtime_status_check_with_progress",
 ]

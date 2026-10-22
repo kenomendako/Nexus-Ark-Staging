@@ -259,6 +259,7 @@ from .app_updates import (
 from .browser_runtime import (
     handle_browser_runtime_apply,
     handle_browser_runtime_status_check,
+    handle_browser_runtime_status_check_with_progress,
 )
 
 GROUP_SUPERVISOR_MAX_ROUNDS_HARD_LIMIT = 3
@@ -15929,7 +15930,7 @@ def handle_lite_runtime_repair_check(*, manager_factory=None):
             return (
                 "### 画面から新しい更新方式へ移行できます\n\n"
                 "「新しい更新方式へ移行」を押したあと、Nexus Arkを通常どおり終了してください。"
-                "終了後にランチャーが切り替わります。数秒待って同じStart.batから起動し、"
+                "終了後にランチャーが切り替わります。別の移行状況ウィンドウで完了を確認してから、同じStart.batで起動し、"
                 "もう一度「状態を確認」を押します。完全パッケージのダウンロードは不要です。",
                 gr.update(
                     value="新しい更新方式へ移行",
@@ -16023,7 +16024,7 @@ def handle_lite_runtime_repair_apply(*, manager_factory=None):
                 return (
                     "### ✅ 新しい更新方式への移行を準備しました\n\n"
                     "Nexus Arkを通常どおり終了してください。終了後に自動で切り替わります。"
-                    "数秒待って同じStart.batから起動し、もう一度「状態を確認」を押してください。"
+                    "別の移行状況ウィンドウで完了を確認してから、同じStart.batで起動し、もう一度「状態を確認」を押してください。"
                 )
             return (
                 "### ❌ 移行の準備中にエラーが発生しました\n\n"
