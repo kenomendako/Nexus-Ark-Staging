@@ -128,6 +128,15 @@
     }
     /* --- [Final Styles - v9: Nexus Modern Polish] --- */
 
+    /* 本文が作る描画レイヤーよりタブメニューを手前に保つ。 */
+    .tabs > .tab-wrapper {
+        position: relative;
+        z-index: 2;
+    }
+    .tabs > .tabitem {
+        isolation: isolate;
+    }
+
     /* 狭幅時に残りのトップタブを開く「…」を見つけやすくする。 */
     #top_level_tabs .overflow-menu > button {
         min-width: 42px;

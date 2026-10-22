@@ -15276,6 +15276,8 @@ try:
             "server_name": server_name_value,
             "server_port": gradio_port,
             "share": False,
+            # SSRのPATH上Node起動を避け、通常のブラウザ描画を明示する。
+            "ssr_mode": False,
             "allowed_paths": allowed_paths,
             "inbrowser": False,
             "quiet": True,

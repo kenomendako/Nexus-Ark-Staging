@@ -1,13 +1,13 @@
 {
   "components": {
     "app": {
-      "version": "0.5.0.65"
+      "version": "0.5.0.66"
     },
     "python_env": {
       "declared_min_python_version": "3.10",
-      "lock_sha256": "d4d923c43b79d802908e73f2d9c41400838f58570119863e66b49aac7c9c52b5",
+      "lock_sha256": "65135a37e32b7ebaecc32d4c3de4dd98ac25a4947fc8a7e223cec04200011ec4",
       "present": true,
-      "pyproject_sha256": "8521078aa89c6680f93d91e71c0af686a98e37d223142f0e189b5edd2d56f811",
+      "pyproject_sha256": "bb6158f7197bfe2cb0f499449bcad4de18f94299a18deb57449aafde0203e380",
       "requires_python": ">=3.11, <3.14"
     },
     "runtime": {
@@ -37,8 +37,8 @@
     {
       "kind": "owned",
       "path": "RELEASE_NOTES.md",
-      "sha256": "84ae41ef0654e3a550d1dc66dca7d70957fd6c826a36c7f478c220697808a6a3",
-      "size": 57291
+      "sha256": "500b15c3ed7ef8a6f6d0531a546aae6d6085e8891d74b81770b28ab84f21ee0e",
+      "size": 40949
     },
     {
       "kind": "owned",
@@ -721,8 +721,8 @@
     {
       "kind": "owned",
       "path": "assets/styles/nexus_ark.css",
-      "sha256": "238af347a69b39d0b7c7bd974fb5f7a9b0d111d7ca3748718a75017ad40c8f36",
-      "size": 31643
+      "sha256": "c7e2d037d02806b729d1cbec5a47099c5e9719a23e6ff8bb96bbd104cbc08b5b",
+      "size": 31871
     },
     {
       "kind": "owned",
@@ -1789,8 +1789,8 @@
     {
       "kind": "owned",
       "path": "nexus_ark.py",
-      "sha256": "bc801166d552f5b3c51c32b82dcca84be83672439694a802b9aae73bf08eb0f1",
-      "size": 942740
+      "sha256": "9d83423050f32a8782fa7626ea1fc51e483cf7fa9ec9655da9f7308e477542a4",
+      "size": 942866
     },
     {
       "kind": "owned",
@@ -1873,8 +1873,8 @@
     {
       "kind": "owned",
       "path": "pyproject.toml",
-      "sha256": "8521078aa89c6680f93d91e71c0af686a98e37d223142f0e189b5edd2d56f811",
-      "size": 2942
+      "sha256": "bb6158f7197bfe2cb0f499449bcad4de18f94299a18deb57449aafde0203e380",
+      "size": 3045
     },
     {
       "kind": "owned",
@@ -2713,13 +2713,13 @@
     {
       "kind": "owned",
       "path": "uv.lock",
-      "sha256": "d4d923c43b79d802908e73f2d9c41400838f58570119863e66b49aac7c9c52b5",
-      "size": 769571
+      "sha256": "65135a37e32b7ebaecc32d4c3de4dd98ac25a4947fc8a7e223cec04200011ec4",
+      "size": 770423
     },
     {
       "kind": "owned",
       "path": "version.json",
-      "sha256": "b5406381f779b807eb4caed3b8a1d324c2a8fc6e5da987dcd591c64c93615d65",
+      "sha256": "f5919d317e3af8a37635b118f5dd2a2fefb14d36abcfbb05b13c97dd2e43c351",
       "size": 243
     },
     {
@@ -2758,7 +2758,7 @@
     "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
     "schema_version": 1
   },
-  "release_version": "0.5.0.65",
+  "release_version": "0.5.0.66",
   "required_entries": [
     "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
     "cloud/lite-relay/README.md",
@@ -2795,5 +2795,5 @@
     "cpu": "x86_64",
     "platform": "windows"
   },
-  "total_bytes": 27458272
+  "total_bytes": 27443239
 }
