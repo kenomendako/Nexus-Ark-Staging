@@ -2353,6 +2353,11 @@ body[data-lite-mode="travel"] .lite-mode-bar {
   gap: 0.35rem;
 }
 
+#travel-return-status {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
 .connection-compact {
   display: flex;
   align-items: center;
@@ -2679,6 +2684,8 @@ body[data-lite-mode="travel"] .travel-route-panel {
 .travel-pending-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .travel-pending-panel details { margin-top: 10px; }
 .travel-pending-panel summary { cursor: pointer; }
+.travel-pending-panel > summary,
+#travel-send-failure > summary { cursor: pointer; font-weight: 600; }
 
 /* Chat header shows only the connection currently used by the conversation. */
 body[data-active-page="chat"] .app-shell > .lite-mode-bar,
@@ -2715,9 +2722,10 @@ body[data-active-page="chat"] .chat-panel > :not(.messages) {
 }
 
 body[data-active-page="chat"] .messages {
-  flex: 1 1 0;
+  /* 復旧案内が増えても履歴を潰さず、チャット全体のスクロールで到達できるようにする。 */
+  flex: 1 0 min(240px, 35dvh);
   height: auto;
-  min-height: 0;
+  min-height: min(240px, 35dvh);
   max-height: none;
 }
 

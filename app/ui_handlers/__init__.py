@@ -15277,7 +15277,7 @@ def handle_lite_cloud_setup_select_mode(previous_state, mode):
     )
     summary = f"「{mode_label}」の作成内容を確認してください。"
     details = (
-        "Cloudflare Dashboardの Build → Compute → Workers & Pagesを開き、"
+        "Cloudflare Dashboardの左側メニューから Build → Compute → Workers & Pagesを開き、"
         "画面右側のSubdomainを確認してください。"
     )
     return _lite_cloud_setup_updates(
@@ -15653,9 +15653,11 @@ def handle_lite_cloud_setup_prepare(
         f"- 公開URL: `{html.escape(str(operation.get('worker_url') or ''))}`  \n"
         f"- 公開する版: `{html.escape(str(confirmation.get('version_id') or operation.get('version_id') or ''))}`  \n"
         "公開すると、このURLでLite用クラウドが外部から利用できるようになります。  \n"
+        "期限切れ送信の回収（5分ごと）とデータの保持期限確認（毎日）の定期処理も登録します。  \n"
         "AI接続、スマホの登録、お出かけ前データの送信、会話は自動で始まりません。"
         "Cloudflare資源は公開後も残り、契約・使用量により料金が発生する場合があります。"
     )
+    gr.Info("Lite用クラウドの準備が完了しました。公開前の確認へ進めます。")
     return _lite_cloud_setup_updates(
         operation,
         "Cloudflare内の準備と、このPCへの接続キー保存が完了しました。まだ公開はしていません。",
@@ -15664,6 +15666,51 @@ def handle_lite_cloud_setup_prepare(
         publish_summary=publish_summary,
         publish_confirm=True,
         publish_action=True,
+    )
+
+
+def _lite_cloud_setup_needs_initial_schedule_resume(operation) -> bool:
+    """公開済みversionに初回Cron登録の完了記録がないか判定する。
+
+    ``completed_steps`` がない旧記録は従来の照合経路へ渡し、記録を推測して
+    Cron登録を始めない。初回versionの公開完了まで確認できる記録だけを対象に、
+    UIで明示的な登録再開確認を要求する。
+    """
+    if not isinstance(operation, dict):
+        return False
+    steps = operation.get("completed_steps")
+    if not isinstance(steps, list):
+        return False
+    return (
+        "initial_version_deployed" in steps
+        and "initial_schedules_deployed" not in steps
+    )
+
+
+def _lite_cloud_setup_initial_schedule_resume_updates(operation):
+    """定期処理の登録再開前に、読み取り照合と外部変更の境界を表示する。"""
+    prompted = dict(operation or {})
+    prompted["initial_schedules_resume_confirmation_required"] = True
+    prompted["external_changes_enabled"] = False
+    worker_name = str((prompted.get("worker") or {}).get("name") or "")
+    version_id = str(prompted.get("version_id") or "")
+    return _lite_cloud_setup_updates(
+        prompted,
+        "Lite用クラウドは公開済みです。送信の期限切れ回収などに必要な定期処理の登録が未確認です。",
+        "読み取り確認だけでは定期処理を登録しません。登録を再開すると、公開済みのLite用クラウドへ"
+        "不足している定期処理だけを追加する可能性があります。内容を確認し、"
+        "登録を再開してよい場合だけ、確認欄にもう一度チェックを入れて同じボタンを押してください。",
+        publish=True,
+        publish_summary=(
+            "**定期処理の登録再開待ち**  \n"
+            f"- 確認対象Worker: `{html.escape(worker_name)}`  \n"
+            f"- 公開済みの版: `{html.escape(version_id)}`  \n"
+            "- 登録する定期処理: 期限切れ送信の回収（5分ごと）・保持期限の確認（毎日）  \n"
+            "新しい版の公開は行いません。読み取り確認で定期処理を勝手に登録しません。"
+        ),
+        publish_confirm=True,
+        publish_action=True,
+        publish_label="定期処理の登録を再開",
     )
 
 
@@ -15737,8 +15784,26 @@ def handle_lite_cloud_setup_publish(previous_state, confirmed, progress=None):
             }
 
         fields = _lite_cloud_setup_confirmation_fields(operation)
+        resume_requested = bool(
+            (previous_state or {}).get("initial_schedules_resume_confirmation_required")
+        )
+        if (
+            operation.get("state") in {"deployed", "publish_reconciliation_required", "postflight_failed"}
+            and _lite_cloud_setup_needs_initial_schedule_resume(operation)
+            and not resume_requested
+        ):
+            # 公開結果の読み取り照合でCronのPUTを暗黙実行しない。利用者が
+            # 確認文を読んで同じ操作を明示再開した時だけ下のresume経路へ進む。
+            return _lite_cloud_setup_initial_schedule_resume_updates(operation)
         if operation.get("state") in {"deployed", "publish_reconciliation_required", "postflight_failed"}:
             progress(0.4, desc="公開済みの結果を照合しています")
+            if _lite_cloud_setup_needs_initial_schedule_resume(operation) and resume_requested:
+                progress(0.4, desc="定期処理の登録を明示的に再開しています")
+                operation = lite_cloud_setup.resume_initial_schedules(
+                    operation,
+                    **fields,
+                    allow_external_changes=True,
+                )
             operation = lite_cloud_setup.reconcile_initial_publish_or_postflight(
                 operation,
                 **fields,
@@ -15757,6 +15822,7 @@ def handle_lite_cloud_setup_publish(previous_state, confirmed, progress=None):
         progress(1, desc="接続確認が完了しました")
     except lite_cloud_setup.LiteCloudSetupError as exc:
         return _lite_cloud_setup_failure_updates(exc, previous_state)
+    gr.Info("Lite用クラウドの公開と接続確認が完了しました。")
     return _lite_cloud_setup_updates(
         operation,
         "✅ Lite用クラウドを公開し、このPCとの接続を確認しました。  \n"
@@ -16295,6 +16361,32 @@ def _lite_models_for_provider(provider: str) -> list[str]:
     return models
 
 
+def _lite_registered_source_key(credential_profile_id: str, provider: str) -> tuple[str, str]:
+    """登録済みLite接続に対応するローカルキー参照を返す。
+
+    Secret値そのものは返さず、モデル一覧取得時に本体設定から解決するための
+    providerと参照名だけを返す。古い登録履歴に参照名がない場合は空値にして、
+    既存のprovider単位のフォールバックへ任せる。
+    """
+    profile_id = str(credential_profile_id or "").strip()
+    normalized_provider = str(provider or "").strip().lower()
+    try:
+        settings = lite_travel.get_settings() or {}
+    except Exception:
+        settings = {}
+    for item in settings.get("registered_provider_profiles") or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("credential_profile_id") or "").strip() != profile_id:
+            continue
+        item_provider = str(item.get("provider") or normalized_provider).strip().lower()
+        reference = str(item.get("source_key_reference") or "").strip()
+        if item_provider == normalized_provider and reference:
+            return item_provider, reference
+        break
+    return "", ""
+
+
 def build_lite_travel_model_choices(
     credential_profile_id: str,
     current_model: str = "",
@@ -16304,29 +16396,77 @@ def build_lite_travel_model_choices(
     models = _lite_models_for_provider(provider)
     choices = [(model, model) for model in models]
     current = str(current_model or "").strip().removeprefix("⭐ ").strip()
+    is_initial_candidate = not current
+    # Liteの初回利用時だけは本体全体の既定モデルを流用せず、Lite専用の
+    # 候補を表示する。保存済みの明示値は上書きしない。
+    if not current:
+        current = lite_travel.get_lite_initial_model_candidate(provider)
     if current and current not in models:
         choices.insert(0, (f"現在の設定（要確認）: {current}", current))
+    elif is_initial_candidate and current:
+        # 接続先を変えた時の初期選択はchoices[0]を使う。取得済み一覧に
+        # 候補が含まれる場合も、古いモデルの並び順へ引き戻されないようにする。
+        choices = [(current, current), *[item for item in choices if item[1] != current]]
     return choices
 
 
-def handle_fetch_lite_travel_models(credential_profile_id, current_model):
+def handle_fetch_lite_travel_models(
+    credential_profile_id,
+    current_model,
+    expected_profile_id: str = "",
+    registration_status: str = "",
+):
     """明示操作時だけ、選択したLite接続の最新モデル候補を取得する。"""
+    if expected_profile_id and str(expected_profile_id).strip() != str(credential_profile_id or "").strip():
+        return (
+            gr.update(),
+            "接続先が変更されたため、古い接続のモデル一覧は適用しません。"
+            "現在の接続を選んでから確認してください。",
+        )
+    # 初回登録イベントからの後続処理では、登録成功後だけ通信する。
+    # ボタン押下からの既存呼び出しは第三引数が空のまま従来どおり動く。
+    if registration_status and not str(registration_status).startswith("AIサービス設定: ✅"):
+        return (
+            gr.update(),
+            "AI接続の登録が完了していないため、モデル一覧の確認を保留しました。"
+            "登録結果を確認してから再試行してください。",
+        )
     provider = lite_travel.infer_provider_from_profile_id(credential_profile_id)
     current = str(current_model or "").strip().removeprefix("⭐ ").strip()
+    if not current:
+        # 取得失敗時も、初回に利用者が選べる候補を消さない。
+        current = lite_travel.get_lite_initial_model_candidate(provider)
     fetched: list[str] = []
 
     try:
         if provider == "gemini":
-            for api_key in config_manager.GEMINI_API_KEYS.values():
-                if str(api_key or "").strip():
-                    fetched = config_manager.fetch_gemini_models(
-                        str(api_key).strip(), exclude_special=True
-                    )
-                    if fetched:
-                        break
+            _source_provider, source_reference = _lite_registered_source_key(
+                credential_profile_id, provider
+            )
+            if source_reference:
+                api_key = lite_travel._resolve_local_key(provider, source_reference)
+                fetched = config_manager.fetch_gemini_models(
+                    api_key, exclude_special=True
+                )
+            else:
+                for api_key in config_manager.GEMINI_API_KEYS.values():
+                    if str(api_key or "").strip():
+                        fetched = config_manager.fetch_gemini_models(
+                            str(api_key).strip(), exclude_special=True
+                        )
+                        if fetched:
+                            break
         elif provider in {"openai", "openrouter"}:
             expected_host = "api.openai.com" if provider == "openai" else "openrouter.ai"
-            for profile in config_manager.get_openai_settings_list():
+            _source_provider, source_reference = _lite_registered_source_key(
+                credential_profile_id, provider
+            )
+            profiles = config_manager.get_openai_settings_list()
+            if source_reference:
+                source_name = source_reference.partition(":")[2]
+                selected = config_manager.get_openai_setting_by_name(source_name)
+                profiles = [selected] if isinstance(selected, dict) else []
+            for profile in profiles:
                 if not isinstance(profile, dict):
                     continue
                 base_url = str(profile.get("base_url") or "").strip()
@@ -16362,13 +16502,120 @@ def handle_fetch_lite_travel_models(credential_profile_id, current_model):
         label = _LITE_PROVIDER_LABELS.get(provider, "選択したAIサービス")
         return (
             gr.update(choices=[(model, model) for model in models], value=current or None),
-            f"{label}の最新モデルを取得できませんでした。APIキーとインターネット接続を確認するか、モデル名を直接入力してください。",
+            f"{label}の最新モデルを取得できませんでした。初回候補と現在の選択は保持しています。"
+            "APIキーとインターネット接続を確認するか、モデル名を直接入力してください。",
         )
     label = _LITE_PROVIDER_LABELS.get(provider, "AIサービス")
     return (
         gr.update(choices=[(model, model) for model in models], value=current or fetched[0]),
         f"{label}の最新モデルを{len(fetched)}件取得しました。使うモデルを選んでください。",
     )
+
+
+def _lite_model_fetch_normalize(value: Any) -> str:
+    """モデル／接続IDの比較用に表示用の接頭辞を除去する。"""
+    return str(value or "").strip().removeprefix("⭐ ").strip()
+
+
+def handle_fetch_lite_travel_models_staged(
+    credential_profile_id,
+    current_model,
+    expected_profile_id: str = "",
+    registration_status: str = "",
+):
+    """モデル取得結果を一旦Stateへ保持し、後続イベントで現在値と照合する。
+
+    モデル一覧の取得は通信を含むため、取得中に利用者が接続先を変更する
+    可能性がある。ここではDropdownを直接更新せず、取得開始時点の接続と
+    モデルを記録した辞書だけを返し、後段の ``handle_apply_*`` が最新のUI値
+    と比較して適用可否を決める。辞書には秘密値を含めない。
+    """
+    profile_id = _lite_model_fetch_normalize(credential_profile_id)
+    initial_model = _lite_model_fetch_normalize(current_model)
+    if not initial_model:
+        provider = lite_travel.infer_provider_from_profile_id(profile_id)
+        initial_model = _lite_model_fetch_normalize(
+            lite_travel.get_lite_initial_model_candidate(provider)
+        )
+    model_update, status = handle_fetch_lite_travel_models(
+        credential_profile_id,
+        current_model,
+        expected_profile_id,
+        registration_status,
+    )
+    return {
+        "profile_id": profile_id,
+        "initial_model": initial_model,
+        "expected_profile_id": _lite_model_fetch_normalize(expected_profile_id),
+        "model_update": dict(model_update) if isinstance(model_update, dict) else {},
+        "status": str(status or ""),
+    }
+
+
+def handle_apply_lite_travel_model_fetch(
+    staged_result,
+    current_profile_id,
+    current_model_id,
+):
+    """完了したモデル取得結果を、最新の接続／モデル選択へ安全に適用する。"""
+    if not isinstance(staged_result, dict):
+        return gr.update(), gr.update()
+
+    staged_profile = _lite_model_fetch_normalize(staged_result.get("profile_id"))
+    expected_profile = _lite_model_fetch_normalize(
+        staged_result.get("expected_profile_id")
+    )
+    current_profile = _lite_model_fetch_normalize(current_profile_id)
+    if not staged_profile or staged_profile != current_profile:
+        return (
+            gr.update(),
+            gr.update(
+                value=(
+                    "接続先が変更されたため、古い接続のモデル一覧は適用しません。"
+                    "現在の接続を確認してください。"
+                )
+            ),
+        )
+    if expected_profile and expected_profile != staged_profile:
+        return (
+            gr.update(),
+            gr.update(
+                value=(
+                    "接続先が変更されたため、古い接続のモデル一覧は適用しません。"
+                    "現在の接続を確認してください。"
+                )
+            ),
+        )
+
+    model_update = staged_result.get("model_update")
+    model_update = dict(model_update) if isinstance(model_update, dict) else {}
+    status = str(staged_result.get("status") or "")
+    initial_model = _lite_model_fetch_normalize(staged_result.get("initial_model"))
+    current_model = _lite_model_fetch_normalize(current_model_id)
+
+    # 同じ接続でも取得中に手動でモデルを変えた場合は、取得結果のvalueで
+    # 上書きせず、利用者の選択をchoicesへ残して保持する。
+    if current_model != initial_model:
+        raw_choices = model_update.get("choices")
+        choices = list(raw_choices) if isinstance(raw_choices, (list, tuple)) else []
+        choice_values = {
+            _lite_model_fetch_normalize(item[1])
+            for item in choices
+            if isinstance(item, (list, tuple)) and len(item) >= 2
+        }
+        if current_model and current_model not in choice_values:
+            choices.insert(
+                0,
+                (
+                    f"現在の選択（取得中に変更）: {current_model}",
+                    current_model,
+                ),
+            )
+        selected_label = html.escape(current_model) if current_model else "未選択"
+        status = f"{status}  \n取得中のモデル選択（{selected_label}）を保持しました。".strip()
+        return gr.update(choices=choices, value=current_model or None), gr.update(value=status)
+
+    return model_update or gr.update(), gr.update(value=status)
 
 
 def handle_lite_ai_connection_change(credential_profile_id, current_model):
@@ -16380,10 +16627,27 @@ def handle_lite_ai_connection_change(credential_profile_id, current_model):
     provider = lite_travel.infer_provider_from_profile_id(credential_profile_id)
     status = (
         f"{_LITE_PROVIDER_LABELS.get(provider, 'AIサービス')}の候補から選ぶか、モデル名を直接入力できます。"
+        "初回や接続先を選び直した直後は、下の「最新のモデル一覧を取得」を押すと"
+        "このキーで利用できる最新候補を確認できます。"
         if provider
         else "この接続の種類を確認できません。AIサービス／接続を選び直してください。"
     )
     return gr.update(choices=choices, value=value), status
+
+
+def handle_lite_ai_connection_change_with_fetch_state(credential_profile_id, current_model):
+    """接続先変更時の候補更新に、古いモデル取得を捨てるための状態を添える。"""
+    model_update, status = handle_lite_ai_connection_change(credential_profile_id, current_model)
+    return (
+        model_update,
+        f"⏳ このキーのモデル一覧を取得中…  \n{status}",
+        gr.update(value=str(credential_profile_id or "").strip()),
+    )
+
+
+def handle_lite_model_fetch_profile_state(credential_profile_id):
+    """登録完了後のモデル取得対象を、登録された接続先へ同期する。"""
+    return gr.update(value=str(credential_profile_id or "").strip())
 
 
 def handle_save_lite_daily_ai_route(credential_profile_id, model_id):
@@ -16396,11 +16660,15 @@ def handle_save_lite_daily_ai_route(credential_profile_id, model_id):
             raise lite_travel.LiteTravelError("使用するAIサービスとモデルを選んでください。")
         if not provider:
             raise lite_travel.LiteTravelError("AIサービス／接続を選び直してください。")
-        lite_travel.save_initial_route_settings(profile_id, selected_model)
+        if not lite_travel.save_initial_route_settings(profile_id, selected_model):
+            raise lite_travel.LiteTravelError("設定をファイルへ保存できませんでした。保存先を確認してください。")
         message = (
             f"今回使うAI: ✅ {_LITE_PROVIDER_LABELS.get(provider, 'AIサービス')} / "
             f"{html.escape(selected_model)} を保存しました。"
         )
+        # ボタン押下後に画面が変わらず不安にならないよう、完了時だけ通知する。
+        # 接続先の秘密値は通知へ含めない。
+        gr.Info("Liteで今回使うAIを保存しました。")
         return (
             message,
             gr.update(value=profile_id),
@@ -16408,6 +16676,7 @@ def handle_save_lite_daily_ai_route(credential_profile_id, model_id):
             message,
         )
     except Exception as exc:
+        gr.Warning("Liteで今回使うAIを保存できませんでした。画面の結果欄を確認してください。")
         return (
             f"今回使うAI: ❌ {html.escape(str(exc))}",
             gr.update(),
@@ -16475,7 +16744,7 @@ def handle_save_lite_travel_settings(
             recovered = lite_travel_operations.configured_wrangler_config_path()
             if recovered:
                 resolved_wrangler_config_path = recovered
-        lite_travel.save_settings(
+        saved = lite_travel.save_settings(
             worker_url,
             owner_token,
             signing_key,
@@ -16491,11 +16760,15 @@ def handle_save_lite_travel_settings(
             budget_timezone=budget_timezone,
             cache_policy=cache_policy,
         )
+        if not saved:
+            raise lite_travel.LiteTravelError("設定をファイルへ保存できませんでした。保存先を確認してください。")
+        gr.Info("LiteのAI・独立お出かけ設定を保存しました。")
         return (
             "設定: ✅ 保存しました。Tokenと署名鍵は本体ローカルにのみ保存されます。  \n"
             "下にある「接続確認とスマホ登録」を開き、「3. 接続確認とスマホ登録」へ進んでください。"
         )
     except Exception as exc:
+        gr.Warning("LiteのAI・独立お出かけ設定を保存できませんでした。画面の結果欄を確認してください。")
         return f"設定: ❌ {html.escape(str(exc))}"
 
 
@@ -16643,13 +16916,16 @@ def handle_register_lite_travel_secret(
         selected_model = preserved_model if any(
             value == preserved_model for _label, value in models
         ) else (models[0][1] if models else None)
+        gr.Info("Lite用のAI接続を登録しました。モデル一覧を確認してから設定を保存してください。")
         return (
             "AIサービス設定: ✅ 本体に保存済みのAPIキーを、Liteでも利用できるようにしました。  \n"
-            "使用するAIサービスとモデルを確認し、「AIと独立お出かけ設定を保存」を押してください。",
+            "使用するAIサービスとモデルを確認し、必要なら「最新のモデル一覧を取得」を押してください。  \n"
+            "その後、「AIと独立お出かけ設定を保存」を押してください。",
             gr.update(choices=connections, value=profile_id),
             gr.update(choices=models, value=selected_model),
         )
     except Exception as exc:
+        gr.Warning("Lite用のAI接続を登録できませんでした。入力内容と準備状態を確認してください。")
         return f"AIサービス設定: ❌ {html.escape(str(exc))}", gr.update(), gr.update()
 
 
@@ -17019,6 +17295,25 @@ def _lite_worker_update_guide_update(metadata: dict[str, Any]):
     return gr.update(visible=visible, open=visible and update_required)
 
 
+def build_lite_connectivity_initial_flow() -> str:
+    """接続情報が未保存なら初回設定を、保存済みなら既存確認を初期選択にする。
+
+    初回利用者へ「既存接続の確認」を先に見せると、何を設定すべきか分からなくなる。
+    ここでは秘密値を表示せず、Worker URLまたは接続キーがローカル設定に保存されて
+    いるかだけを見て初期選択を決める。既存接続が保存済みの利用者は従来どおり
+    確認フローを維持する。
+    """
+    try:
+        settings = lite_travel.get_settings() or {}
+    except Exception:
+        settings = {}
+    has_saved_connection = any(
+        str(settings.get(key) or "").strip()
+        for key in ("worker_url", "owner_token", "bundle_signing_key")
+    )
+    return "existing" if has_saved_connection else "initial"
+
+
 def _lite_update_database_name_update() -> Any:
     """4状態確認時に、復元を含む最新のD1名を更新欄へ反映する。"""
     return gr.update(value=build_lite_update_database_name())
@@ -17064,6 +17359,17 @@ def handle_lite_connectivity_refresh(flow, room_name=""):
         _lite_update_database_name_update(),
         _lite_connectivity_navigation_update(metadata),
     )
+
+
+def handle_lite_connectivity_refresh_with_notification(flow, room_name=""):
+    """「4状態を確認」ボタン専用の完了通知付きwrapper。
+
+    ペアリングや待機snapshotの処理も内部で共有refreshを呼ぶため、共通の
+    refresh本体では通知せず、この明示ボタンからの実行時だけ通知する。
+    """
+    result = handle_lite_connectivity_refresh(flow, room_name)
+    gr.Info("4状態の確認が完了しました。表示内容を確認してください。")
+    return result
 
 
 def handle_lite_connectivity_flow_change(flow):
@@ -17356,11 +17662,15 @@ def build_lite_pairing_handoff_html(worker_url: str, code: str, expires_at: str)
     safe_code = html.escape(pairing_code)
     return (
         '<section class="lite-pairing-handoff">'
-        "<strong>持ち出すPWAへ短期情報を渡す</strong>"
-        "<p><strong>すでにLiteをインストール済みの方:</strong> スマホのホーム画面からいつものLiteを開き、"
-        "設定で下のWorker URLと短期コードを入力してください。QRを読み直して別のLiteを入れ直す必要はありません。</p>"
-        "<p><strong>初めてスマホに入れる方:</strong> 下のQRでLiteを開いてインストールし、"
-        "ホーム画面のアイコンから開き直してから短期コードで登録します。期限切れならPCでコードを再発行してください。</p>"
+        "<strong>持ち出すスマホのNexus Ark Liteアプリ（PWA）へ短期情報を渡す</strong>"
+        "<p><strong>すでにLiteをインストール済みの方:</strong> スマホのホーム画面からいつもの"
+        "Nexus Ark Liteアプリ（PWA）を開き、下部メニューの <strong>設定</strong> → "
+        "<strong>独立モードの準備</strong> を開きます。その画面の <strong>Lite用クラウド URL</strong> "
+        "の下にある <strong>ペアリングコード</strong> 欄へ、下の短期コードを入力して"
+        "「ペアリング」を押してください。QRを読み直して別のLiteを入れ直す必要はありません。</p>"
+        "<p><strong>初めてスマホに入れる方:</strong> 下のQRでNexus Ark Liteアプリ（PWA）を開いてインストールし、"
+        "ホーム画面のアイコンから開き直してから、設定 → 独立モードの準備 → ペアリングコード欄で登録します。"
+        "期限切れならPCでコードを再発行してください。</p>"
         "<p>本体接続のURLとTokenは、このQRでは移しません。端末登録後のお出かけ前データはPC側で準備できます。"
         "スマホから本体へ直接接続する場合は、本体接続の設定も別途必要です。</p>"
         '<div class="lite-pairing-handoff-grid">'
@@ -17376,7 +17686,8 @@ def build_lite_pairing_handoff_html(worker_url: str, code: str, expires_at: str)
         "</dl>"
         "</div></div>"
         "<p class=\"lite-connectivity-safety\">通常ブラウザで開いた場合は、その画面では実行せず、"
-        "実際に持ち出すPWAで下のWorker URLと短期コードを手入力してください。</p>"
+        "実際に持ち出すNexus Ark Liteアプリ（PWA）で、設定 → 独立モードの準備へ進み、"
+        "下のWorker URLと短期コードを手入力してください。</p>"
         "</section>"
     )
 
@@ -17389,9 +17700,11 @@ def handle_lite_connectivity_issue_pairing_code(flow, room_name="", ttl_minutes=
         worker_url = str(lite_travel.get_settings().get("worker_url") or "")
         result = f"端末ペアリングコード: `{html.escape(code)}`  \n有効期限: `{html.escape(expires)}`（発行から{ttl_minutes}分・1回限り）"
         handoff = build_lite_pairing_handoff_html(worker_url, code, expires)
+        gr.Info("短期ペアリングコードを発行しました。スマホのNexus Ark Liteアプリで入力してください。")
     except Exception as exc:
         result = f"ペアリング: ❌ {html.escape(str(exc))}"
         handoff = ""
+        gr.Warning("短期ペアリングコードを発行できませんでした。接続設定を確認してください。")
     return _ensure_output_count(
         (result, handoff, *handle_lite_connectivity_refresh(flow, room_name)), 8
     )
@@ -17580,6 +17893,7 @@ def handle_lite_travel_prepare_standby(
         episodic_label = (
             f"直近{int(episodic_memory_days or 0)}日" if include_episodic_memory else "含めない"
         )
+        gr.Info("お出かけ前データを準備しました。内容を確認して次へ進めます。")
         return (
             f"待機snapshot: ✅ 世代{int(manifest.get('generation') or 0)}を準備しました。 "
             f"作成 `{html.escape(str(manifest.get('created_at') or ''))}` / "
@@ -17589,6 +17903,7 @@ def handle_lite_travel_prepare_standby(
             f"直近の会話: **最大{int(recent_message_limit or 0)}件/ペルソナ**"
         )
     except Exception as exc:
+        gr.Warning("お出かけ前データを準備できませんでした。選択内容を確認してください。")
         return f"待機snapshot: ❌ {html.escape(str(exc))}"
 
 
@@ -17628,6 +17943,7 @@ def handle_lite_travel_preview_standby(
             },
             "expires_at": expires_at,
         }
+        gr.Info("送信前の内容を確認しました。『確認した内容をLite用クラウドへ準備』で登録できます。")
         return (
             summary,
             json.dumps(snapshot, ensure_ascii=False, indent=2),
@@ -17635,6 +17951,7 @@ def handle_lite_travel_preview_standby(
             gr.update(interactive=True, variant="primary"),
         )
     except Exception as exc:
+        gr.Warning("送信前の内容を作成できませんでした。選択内容を確認してください。")
         return (
             f"確認内容を作成できませんでした: ❌ {html.escape(str(exc))}",
             gr.update(value=""),
@@ -17664,6 +17981,7 @@ def handle_lite_travel_confirm_standby(preview_state):
                 config_manager.update_config_keys({"lite_outing_preferences": preview_state["preferences"]})
             except Exception:
                 preference_note = "  \n前回の選択を保存できませんでした。次回は内容を選び直してください。"
+        gr.Info("お出かけ前データをLite用クラウドへ準備しました。次は出発内容を確認できます。")
         return (
             f"待機snapshot: ✅ 確認した内容を世代{int(manifest.get('generation') or 0)}として準備しました。 "
             f"期限 `{html.escape(str(manifest.get('expires_at') or ''))}`。下の「3. 出発」へ進んでください。{preference_note}",
@@ -17671,6 +17989,7 @@ def handle_lite_travel_confirm_standby(preview_state):
             gr.update(interactive=False, variant="secondary"),
         )
     except Exception as exc:
+        gr.Warning("お出かけ前データをLite用クラウドへ準備できませんでした。")
         return (
             f"待機snapshot: ❌ {html.escape(str(exc))}",
             preview_state,
@@ -17688,8 +18007,10 @@ def handle_lite_travel_build_snapshot(room_name, system_prompt, permanent_memory
             str(episodic_summary or ""),
         )
         serialized = json.dumps(snapshot, ensure_ascii=False, indent=2)
+        gr.Info("出発内容を作成しました。表示内容を確認してから出発できます。")
         return serialized, f"状態: ✅ snapshotを作成しました（{len(serialized):,}文字）。内容を確認して出発してください。"
     except Exception as exc:
+        gr.Warning("出発内容を作成できませんでした。選んだペルソナと記憶を確認してください。")
         return gr.update(), f"状態: ❌ {html.escape(str(exc))}"
 
 
@@ -17779,6 +18100,7 @@ def handle_lite_travel_build_multi_snapshot(
             "room_name": str(room_name or ""),
             "expires_at": preview_expires_at,
         }
+        gr.Info("出発内容を作成しました。表示内容を確認してから出発できます。")
         return (
             summary,
             serialized,
@@ -17789,6 +18111,7 @@ def handle_lite_travel_build_multi_snapshot(
             build_lite_outing_progress("departure_preview_ready"),
         )
     except Exception as exc:
+        gr.Warning("出発内容を作成できませんでした。選択内容を確認してください。")
         return (
             f"出発前の確認: ❌ {html.escape(str(exc))}",
             gr.update(value=""),
@@ -17816,14 +18139,18 @@ def handle_lite_travel_start(preview_state: dict[str, Any], room_name: str):
         if snapshot.get("schema_version") == 4:
             lite_travel.start_multi_departure(snapshot)
             names = [str(item.get("persona_display_name") or item.get("persona_id")) for item in snapshot["personas"]]
+            gr.Info("選んだペルソナが出発しました。Liteで会話を始められます。")
             return f"状態: ✅ {len(names)}ペルソナが出発しました: {html.escape('、'.join(names))}", None
         if snapshot.get("persona_id") != room_name:
             raise lite_travel.LiteTravelError("表示中ルームとsnapshotのペルソナが一致しません。")
         lite_travel.start_departure(snapshot)
+        gr.Info("ペルソナが出発しました。Liteで会話を始められます。")
         return build_lite_travel_status(room_name), None
     except lite_travel.LiteTravelUncertainRequestError as exc:
+        gr.Warning("出発結果を確認できませんでした。状態を確認してから次へ進んでください。")
         return f"状態: ⚠️ {html.escape(str(exc))}", None
     except Exception as exc:
+        gr.Warning("出発できませんでした。内容を確認してもう一度お試しください。")
         return f"状態: ❌ 出発できませんでした。{html.escape(str(exc))}", None
 
 
@@ -17859,8 +18186,10 @@ def handle_lite_travel_export_bundle(room_name: str):
         export_dir = Path(constants.METADATA_DIR) / "lite_travel" / "exports"
         export_path = export_dir / f"lite_travel_return_{session_id}.json"
         file_lock_utils.safe_json_write(export_path.as_posix(), bundle)
+        gr.Info("署名付き帰宅データを書き出しました。内容を確認して本体へ戻せます。")
         return gr.update(value=export_path.as_posix()), "状態: ✅ 署名付き帰宅bundleを書き出し、取込対象へ選択しました。"
     except Exception as exc:
+        gr.Warning("帰宅データを書き出せませんでした。お出かけ状態を確認してください。")
         return gr.update(), f"状態: ❌ {html.escape(str(exc))}"
 
 
@@ -17874,6 +18203,7 @@ def handle_lite_travel_online_return(room_name: str):
         receipt_count = sum(int(item.get("imported_receipt_count") or 0) for item in result["personas"])
         proposals = result.get("route_proposals") or []
         resumed = "（中断地点から再開）" if result.get("resumed") else ""
+        gr.Info("Liteの会話を本体へ戻しました。")
         return (
             f"状態: ✅ {len(result['personas'])}ペルソナをオンライン帰宅しました{resumed}。"
             f"会話{event_count}件、料金{receipt_count}件を統合しました。"
@@ -17883,6 +18213,7 @@ def handle_lite_travel_online_return(room_name: str):
             gr.update(choices=proposals, value=[]),
         )
     except Exception as exc:
+        gr.Warning("Liteの会話を本体へ戻せませんでした。帰宅プレビューを確認してください。")
         return f"状態: ❌ オンライン帰宅を完了できませんでした。再実行できます。{html.escape(str(exc))}", gr.update()
 
 
@@ -17930,6 +18261,10 @@ def handle_lite_travel_return_preview_ui(room_name: str):
     """帰宅確認に成功した時だけ、確定操作をprimaryかつ有効にする。"""
     preview = handle_lite_travel_return_preview(room_name)
     succeeded = not preview.startswith("帰宅プレビュー: ❌")
+    if succeeded:
+        gr.Info("帰宅内容を確認しました。問題がなければ本体へ戻せます。")
+    else:
+        gr.Warning("帰宅内容を確認できませんでした。接続とお出かけ状態を確認してください。")
     return (
         preview,
         gr.update(variant="secondary" if succeeded else "primary"),

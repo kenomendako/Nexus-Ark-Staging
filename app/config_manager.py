@@ -44,6 +44,15 @@ NIM_API_KEY = ""       # [Phase 4] Nvidia NIM 用APIキー
 XAI_API_KEY = ""       # [Phase 4] X.ai (Grok) 用APIキー
 AVAILABLE_ZHIPU_MODELS = constants.ZHIPU_MODELS
 
+
+def get_lite_default_model(provider: Any = "gemini") -> str:
+    """Lite初回候補を返す。利用可否の確定はWorkerで行う。
+
+    本体の共通モデル既定値とは分離し、Lite初回設定の候補に限定する。
+    使用可能と断定せず、出発前のliveカタログ照合を通過した経路のみ送信できる。
+    """
+    return constants.LITE_DEFAULT_GEMINI_MODEL if str(provider or "").strip().lower() == "gemini" else ""
+
 ROOM_AI_PROVIDER_SETTING_KEYS = {
     "provider",
     "api_key_name",

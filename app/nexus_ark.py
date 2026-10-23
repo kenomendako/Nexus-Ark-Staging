@@ -6230,8 +6230,10 @@ try:
                     ):
                         gr.Markdown("## Nexus Ark Lite・お出かけ")
                         gr.Markdown(
-                            "Nexus Ark Liteは、スマホやタブレットのブラウザから使える"
-                            "インストール対応Webアプリ（PWA）です。本体接続・独立モード、"
+                            "Nexus Ark Liteは、スマホやタブレットのブラウザから使えるアプリです。"
+                            "スマホのNexus Ark Liteアプリとしてホーム画面に追加できます"
+                            "（インストール対応Webアプリ（PWA））。"
+                            "本体接続・独立モード、"
                             "外部AIへの持ち出し・帰宅を、この画面で設定できます。"
                         )
                         with gr.Row():
@@ -6279,6 +6281,11 @@ try:
                             _lite_focus_choices, _lite_initial_focus = ui_handlers.build_lite_outing_focus(
                                 effective_initial_room, _lite_room_choices
                             )
+                            gr.Markdown(
+                                "### 状態確認と次の操作\n"
+                                "まず **現在の状態に更新** を押してください。確認後は、上の「次にすること」に沿って進めます。  \n"
+                                "下のペルソナ欄は状態確認・帰宅用です。**一緒に行く人は「2. お出かけ前の準備」で選びます。**"
+                            )
                             lite_travel_focus_persona = gr.Dropdown(
                                 label="状態・帰宅を確認するペルソナ",
                                 choices=_lite_focus_choices,
@@ -6292,10 +6299,10 @@ try:
                             )
                             lite_travel_refresh_status = gr.Button("現在の状態に更新", variant="primary")
                             lite_travel_refresh_feedback = gr.Markdown(
-                                "未更新です。接続状態は保存済み設定だけを表示しています。"
+                                "未更新です。保存済み設定だけを表示しています。出発前は「現在の状態に更新」を押してから準備を始めてください。"
                             )
-                            gr.Markdown("#### 直前の操作結果")
-                            lite_travel_operation_result = gr.Markdown("まだ操作していません。")
+                            gr.Markdown("#### 操作結果（最後に押したボタンの結果）")
+                            lite_travel_operation_result = gr.Markdown("まだ操作していません。操作が終わるとここに結果が表示されます。")
 
                             with gr.Group(elem_classes=["lite-outing-stage"], visible=True) as lite_travel_connection_group:
                                 gr.Markdown("### 1. 接続確認\n最初に、4つの準備状況とペルソナの現在地をまとめて確認します。")
@@ -6350,6 +6357,10 @@ try:
                                     _lite_daily_settings.get("credential_profile_id") or ""
                                 )
                                 _lite_daily_model = str(_lite_daily_settings.get("model_id") or "")
+                                if not _lite_daily_model:
+                                    _lite_daily_model = lite_travel.get_lite_initial_model_candidate(
+                                        lite_travel.infer_provider_from_profile_id(_lite_daily_profile)
+                                    )
                                 gr.Markdown(
                                     "#### 今回使うAI\n"
                                     "出発時に使い始めるAIサービスとモデルです。外出中もLiteから変更できます。"
@@ -6642,6 +6653,7 @@ try:
                                 )
 
                             _lite_travel_settings = config_manager.CONFIG_GLOBAL.get("lite_travel_settings", {}) or {}
+                            _lite_connectivity_initial_flow = ui_handlers.build_lite_connectivity_initial_flow()
                             with gr.Accordion(
                                 "PCを止めても使うための初回設定",
                                 open=False,
@@ -6823,7 +6835,7 @@ try:
                                     gr.Markdown(
                                         "**CloudflareのSubdomainを確認**  \n"
                                         "[Cloudflare Dashboard](https://dash.cloudflare.com/) を開き、"
-                                        "**Build → Compute → Workers & Pages** へ進みます。"
+                                        "左側メニューから **Build → Compute → Workers & Pages** へ進みます。"
                                         "画面右側の **Account details → Subdomain** に表示された値を、"
                                         "そのまま下へ入力してください。"
                                     )
@@ -6950,7 +6962,7 @@ try:
                                         choices=_lite_travel_initial_registration_choices,
                                         value=_lite_travel_initial_registration_binding,
                                         interactive=True,
-                                        info="通常用または予備の接続先を選びます。登録は選んだ1件だけです。",
+                                        info="通常用または予備の接続先を1件選び、下の保存ボタンを押すたびにその1件だけを保存します。",
                                     )
                                     lite_travel_local_key_status = gr.Markdown(
                                         _lite_travel_initial_key_state["status"]
@@ -7037,6 +7049,10 @@ try:
                                         interactive=True,
                                     )
                                     _lite_travel_initial_model = str(_lite_travel_settings.get("model_id", "") or "")
+                                    if not _lite_travel_initial_model:
+                                        _lite_travel_initial_model = lite_travel.get_lite_initial_model_candidate(
+                                            lite_travel.infer_provider_from_profile_id(_lite_travel_initial_profile)
+                                        )
                                     lite_travel_model_id = gr.Dropdown(
                                         label="最初に使うAIモデル（必須）",
                                         choices=ui_handlers.build_lite_travel_model_choices(
@@ -7049,13 +7065,16 @@ try:
                                         allow_custom_value=True,
                                         info="普段と同じモデルを一覧から選ぶか、最新のモデル名を直接入力できます。",
                                     )
+                                lite_travel_model_fetch_profile = gr.State(_lite_travel_initial_profile)
+                                lite_travel_model_fetch_stage = gr.State({})
                                 lite_travel_refresh_models_button = gr.Button(
                                     "最新のモデル一覧を取得",
                                     variant="secondary",
                                     size="sm",
                                 )
                                 lite_travel_ai_connection_status = gr.Markdown(
-                                    "本体に保存済みの候補を表示しています。必要なら最新一覧を取得できます。"
+                                    "本体に保存済みの候補を表示しています。初回や接続先を選び直した後は、"
+                                    "「最新のモデル一覧を取得」を押すと、このキーで使えるモデルを確認できます。"
                                 )
                                 lite_travel_use_custom_model = gr.State(False)
                                 lite_travel_custom_model_id = gr.State("")
@@ -7159,7 +7178,7 @@ try:
                                             ("既存接続の確認", "existing"),
                                             ("端末を再登録", "re_pair"),
                                         ],
-                                        value="existing",
+                                        value=_lite_connectivity_initial_flow,
                                         interactive=True,
                                     )
                                     lite_connectivity_refresh_button = gr.Button(
@@ -7167,7 +7186,7 @@ try:
                                     )
                                 lite_connectivity_card = gr.HTML(
                                     value=ui_handlers.build_lite_connectivity_wizard(
-                                        "existing",
+                                        _lite_connectivity_initial_flow,
                                         refresh_remote=False,
                                         refresh_action_label="4状態を確認",
                                     )
@@ -7252,7 +7271,9 @@ try:
                                         visible=False,
                                     )
                                 gr.Markdown(
-                                    "発行したコードは、実際に持ち出すPWAで入力します。"
+                                    "発行したコードは、実際に持ち出すスマホのNexus Ark Liteアプリ（PWA）で入力します。"
+                                    "スマホ側の **設定 → 独立モードの準備** を開き、Lite用クラウドURLの下にある"
+                                    " **ペアリングコード** 欄へ入力して「ペアリング」を押してください。"
                                     "お出かけ前データの細かな選択は、次の日常画面で行えます。"
                                 )
                                 lite_connectivity_action_status = gr.Markdown("操作結果: 未実行")
@@ -12544,7 +12565,7 @@ try:
             show_progress="hidden",
         )
         lite_connectivity_refresh_button.click(
-            fn=ui_handlers.handle_lite_connectivity_refresh,
+            fn=ui_handlers.handle_lite_connectivity_refresh_with_notification,
             inputs=[lite_connectivity_flow, current_room_name],
             outputs=[
                 lite_connectivity_card,
@@ -12853,7 +12874,10 @@ try:
             lite_cloud_setup_publish_button,
             "Lite用クラウドを公開して接続を確認",
         )
-        lite_travel_settings_save_event = lite_travel_settings_save.click(
+        lite_travel_settings_save_event = _start_lite_busy_button(
+            lite_travel_settings_save,
+            "設定を保存中…",
+        ).then(
             fn=ui_handlers.handle_save_lite_travel_settings,
             inputs=[
                 lite_travel_worker_url,
@@ -12874,6 +12898,11 @@ try:
                 lite_travel_custom_model_id,
             ],
             outputs=[lite_travel_settings_status],
+        )
+        _restore_lite_busy_button(
+            lite_travel_settings_save_event,
+            lite_travel_settings_save,
+            "AIと独立お出かけ設定を保存",
         )
         lite_travel_settings_save_event.then(
             fn=ui_handlers.handle_lite_connectivity_flow_change,
@@ -12954,9 +12983,39 @@ try:
             queue=False,
             show_progress="hidden",
         )
-        lite_travel_credential_profile_id.input(
-            fn=ui_handlers.handle_lite_ai_connection_change,
+        lite_travel_ai_connection_change_event = lite_travel_credential_profile_id.input(
+            fn=ui_handlers.handle_lite_ai_connection_change_with_fetch_state,
             inputs=[lite_travel_credential_profile_id, lite_travel_model_id],
+            outputs=[
+                lite_travel_model_id,
+                lite_travel_ai_connection_status,
+                lite_travel_model_fetch_profile,
+            ],
+            queue=False,
+            show_progress="hidden",
+        )
+        # 接続先を明示的に選んだ後だけ、その接続に対応する最新候補を確認する。
+        # 起動時には外部照会せず、取得失敗時も初回候補と現在値を保持する。
+        lite_travel_ai_connection_change_event.then(
+            fn=ui_handlers.handle_fetch_lite_travel_models_staged,
+            inputs=[
+                lite_travel_credential_profile_id,
+                lite_travel_model_id,
+                lite_travel_model_fetch_profile,
+            ],
+            outputs=[lite_travel_model_fetch_stage],
+            # 取得中の接続変更は最後の1件を残す。onceでは古い結果を
+            # 捨てた後、現在の接続の一覧が取得されないままになる。
+            trigger_mode="always_last",
+            concurrency_limit=1,
+            concurrency_id="lite-model-list-fetch",
+        ).then(
+            fn=ui_handlers.handle_apply_lite_travel_model_fetch,
+            inputs=[
+                lite_travel_model_fetch_stage,
+                lite_travel_credential_profile_id,
+                lite_travel_model_id,
+            ],
             outputs=[lite_travel_model_id, lite_travel_ai_connection_status],
             queue=False,
             show_progress="hidden",
@@ -12965,12 +13024,26 @@ try:
             lite_travel_refresh_models_button,
             "モデル一覧を取得中…",
         ).then(
-            fn=ui_handlers.handle_fetch_lite_travel_models,
-            inputs=[lite_travel_credential_profile_id, lite_travel_model_id],
-            outputs=[lite_travel_model_id, lite_travel_ai_connection_status],
+            fn=ui_handlers.handle_fetch_lite_travel_models_staged,
+            inputs=[
+                lite_travel_credential_profile_id,
+                lite_travel_model_id,
+                lite_travel_model_fetch_profile,
+            ],
+            outputs=[lite_travel_model_fetch_stage],
             trigger_mode="once",
             concurrency_limit=1,
             concurrency_id="lite-model-list-fetch",
+        ).then(
+            fn=ui_handlers.handle_apply_lite_travel_model_fetch,
+            inputs=[
+                lite_travel_model_fetch_stage,
+                lite_travel_credential_profile_id,
+                lite_travel_model_id,
+            ],
+            outputs=[lite_travel_model_id, lite_travel_ai_connection_status],
+            queue=False,
+            show_progress="hidden",
         )
         _restore_lite_busy_button(
             lite_travel_refresh_models_event,
@@ -13003,6 +13076,38 @@ try:
                 lite_daily_model_id,
                 lite_daily_ai_status,
             ],
+            queue=False,
+            show_progress="hidden",
+        )
+        # 初回キー登録は利用者が明示的に押した操作なので、その完了後だけ
+        # 登録したキーの最新モデル候補を確認する。外部照会を起動時には行わない。
+        lite_travel_secret_register_profile_state_event = lite_travel_secret_register_event.then(
+            fn=ui_handlers.handle_lite_model_fetch_profile_state,
+            inputs=[lite_travel_credential_profile_id],
+            outputs=[lite_travel_model_fetch_profile],
+            queue=False,
+            show_progress="hidden",
+        )
+        lite_travel_secret_register_profile_state_event.then(
+            fn=ui_handlers.handle_fetch_lite_travel_models_staged,
+            inputs=[
+                lite_travel_credential_profile_id,
+                lite_travel_model_id,
+                lite_travel_model_fetch_profile,
+                lite_travel_secret_status,
+            ],
+            outputs=[lite_travel_model_fetch_stage],
+            trigger_mode="once",
+            concurrency_limit=1,
+            concurrency_id="lite-model-list-fetch",
+        ).then(
+            fn=ui_handlers.handle_apply_lite_travel_model_fetch,
+            inputs=[
+                lite_travel_model_fetch_stage,
+                lite_travel_credential_profile_id,
+                lite_travel_model_id,
+            ],
+            outputs=[lite_travel_model_id, lite_travel_ai_connection_status],
             queue=False,
             show_progress="hidden",
         )
@@ -14521,7 +14626,10 @@ try:
             queue=False,
             show_progress="hidden",
         )
-        lite_daily_ai_save.click(
+        lite_daily_ai_save_event = _start_lite_busy_button(
+            lite_daily_ai_save,
+            "今回使うAIを保存中…",
+        ).then(
             fn=ui_handlers.handle_save_lite_daily_ai_route,
             inputs=[lite_daily_credential_profile_id, lite_daily_model_id],
             outputs=[
@@ -14530,6 +14638,11 @@ try:
                 lite_travel_model_id,
                 lite_travel_settings_status,
             ],
+        )
+        _restore_lite_busy_button(
+            lite_daily_ai_save_event,
+            lite_daily_ai_save,
+            "今回使うAIを保存",
         )
         lite_travel_snapshot_preset.change(
             fn=ui_handlers.handle_lite_snapshot_preset_change,

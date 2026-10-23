@@ -58,6 +58,12 @@ REQUIRED_RELAY_FILES = (
     "scripts/wrangler-secret-stdin-preload.cjs",
     "wrangler.phase2.example.jsonc",
 )
+# 初回公開時に登録する標準スケジュール。設定に独自Cronがあれば、API側の
+# 既存値を先に読み取って保持したうえで、この2件だけを不足分として追加する。
+REQUIRED_INITIAL_CRONS = (
+    "17 3 * * *",
+    "*/5 * * * *",
+)
 VIRTUAL_SECRET_FILE_NAME = ".nexus-ark-virtual-secrets.json"
 _VERSION_PATTERN = re.compile(r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?!\d)")
 SETUP_OPERATION_SCHEMA_VERSION = 1
@@ -3268,7 +3274,7 @@ def _cloudflare_api_json(
     url: str,
     *,
     token: str,
-    payload: Optional[Mapping[str, Any]] = None,
+    payload: Optional[Mapping[str, Any] | list[Mapping[str, Any]]] = None,
     failure_code: str = "worker_container_create_failed",
     uncertain_failure_code: str = "worker_container_reconciliation_required",
     action_label: str = "Workerの登録",
@@ -3276,7 +3282,7 @@ def _cloudflare_api_json(
     """OAuth tokenをログやargvへ出さずCloudflare JSON APIを呼ぶ。"""
 
     body = (
-        json.dumps(dict(payload), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if payload is not None
         else None
     )
@@ -3323,6 +3329,187 @@ def _cloudflare_api_json(
             failure_code=failure_code,
         )
     return result
+
+
+def _schedule_values(
+    value: Any, *, failure_code: str, allow_strings: bool = False
+) -> list[str]:
+    """Cloudflareのschedules応答を、重複を除いたCron文字列へ縮退する。"""
+
+    if not isinstance(value, list):
+        raise LiteCloudSetupError(
+            "CloudflareのCron設定を確認できません。",
+            failure_code=failure_code,
+        )
+    schedules: list[str] = []
+    for item in value:
+        if isinstance(item, Mapping):
+            cron = str(item.get("cron") or "").strip()
+        elif allow_strings and isinstance(item, str):
+            # 設定ファイルはCron文字列を許可し、API応答ではobjectを要求する。
+            cron = item.strip()
+        else:
+            cron = ""
+        if not cron:
+            raise LiteCloudSetupError(
+                "CloudflareのCron設定に不正な項目があります。",
+                failure_code=failure_code,
+            )
+        if cron not in schedules:
+            schedules.append(cron)
+    return schedules
+
+
+def _unique_initial_schedule_config_object(
+    pairs: list[tuple[str, Any]],
+) -> dict[str, Any]:
+    """初回公開の設定で重複キーを拒否し、解釈の揺れを防ぐ。"""
+
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_config_key")
+        result[key] = value
+    return result
+
+
+def _read_initial_schedule_config(path: Path) -> dict[str, Any]:
+    """生成済みCron設定をロック内で読み、JSONCの重複キーも拒否する。"""
+
+    with file_lock_utils.get_file_lock(path.as_posix()):
+        text = path.read_text(encoding="utf-8")
+        if path.suffix.lower() == ".jsonc":
+            text = _strip_jsonc_trailing_commas(_strip_jsonc_comments(text))
+        value = json.loads(
+            text, object_pairs_hook=_unique_initial_schedule_config_object
+        )
+    if not isinstance(value, dict):
+        raise ValueError("invalid_config")
+    return value
+
+
+def _configured_initial_schedules(
+    config_path: Path, *, relay: Path, worker_name: str
+) -> list[str]:
+    """生成済み設定から初回公開に必要なCronを読み取る。"""
+
+    try:
+        config_path.resolve().relative_to(relay.resolve())
+    except ValueError as exc:
+        raise LiteCloudSetupError(
+            "初回Cron設定の場所が不正です。",
+            failure_code="publish_reconciliation_required",
+        ) from exc
+    try:
+        config = _read_initial_schedule_config(config_path)
+    except (OSError, ValueError, TypeError, file_lock_utils.Timeout) as exc:
+        raise LiteCloudSetupError(
+            "初回Cron設定を安全に読み取れません。",
+            failure_code="publish_reconciliation_required",
+        ) from exc
+    if str(config.get("name") or "").strip() != worker_name:
+        raise LiteCloudSetupError(
+            "初回Cron設定のWorker名が確認済みWorkerと一致しません。",
+            failure_code="publish_reconciliation_required",
+        )
+    triggers = config.get("triggers") if isinstance(config, Mapping) else None
+    crons = triggers.get("crons") if isinstance(triggers, Mapping) else None
+    schedules = _schedule_values(
+        crons,
+        failure_code="publish_reconciliation_required",
+        allow_strings=True,
+    )
+    missing = [cron for cron in REQUIRED_INITIAL_CRONS if cron not in schedules]
+    if missing:
+        raise LiteCloudSetupError(
+            "初回公開に必要なCronが生成済み設定にありません。",
+            failure_code="publish_reconciliation_required",
+        )
+    return schedules
+
+
+def ensure_cloudflare_worker_schedules(
+    *,
+    account_id: str,
+    worker_name: str,
+    config_path: Path,
+    runner: Callable[..., Any],
+    relay: Path,
+    node_command: str | Path | None = None,
+    api_request: Callable[..., Mapping[str, Any]] = _cloudflare_api_json,
+) -> dict[str, Any]:
+    """初回公開後のCronをGET→不足分PUT→GETで冪等に確定する。
+
+    ``versions upload``／``versions deploy``はWorker versionの公開だけを行い、
+    Cron Triggerは反映しないため、専用Schedules APIを使う。既存の独自Cronは
+    最初のGET結果へ含めてPUTするので削除しない。GET失敗やPUT後の照合失敗は、
+    再送をせず ``publish_reconciliation_required`` へ戻す。
+    """
+
+    if not account_id or not _RESOURCE_NAME_PATTERN.fullmatch(worker_name):
+        raise LiteCloudSetupError(
+            "初回Cron登録対象が不正です。",
+            failure_code="operation_record_schema_invalid",
+        )
+    relay_path = Path(relay)
+    configured = _configured_initial_schedules(
+        Path(config_path), relay=relay_path, worker_name=worker_name
+    )
+    token = _wrangler_auth_token(
+        runner=runner,
+        relay=relay_path,
+        node_command=node_command,
+    )
+    endpoint = (
+        "https://api.cloudflare.com/client/v4/accounts/"
+        f"{quote(account_id, safe='')}/workers/scripts/"
+        f"{quote(worker_name, safe='')}/schedules"
+    )
+    request_options = {
+        "token": token,
+        "failure_code": "publish_reconciliation_required",
+        "uncertain_failure_code": "publish_reconciliation_required",
+        "action_label": "初回Cron登録",
+    }
+    current = api_request("GET", endpoint, **request_options)
+    current_result = current.get("result") if isinstance(current, Mapping) else None
+    current_values = _schedule_values(
+        current_result.get("schedules") if isinstance(current_result, Mapping) else None,
+        failure_code="publish_reconciliation_required",
+    )
+    missing = [cron for cron in configured if cron not in current_values]
+    if not missing:
+        return {
+            "verified": True,
+            "changed": False,
+            "schedules": current_values,
+            "added": [],
+        }
+
+    merged = [*current_values, *missing]
+    api_request(
+        "PUT",
+        endpoint,
+        payload=[{"cron": cron} for cron in merged],
+        **request_options,
+    )
+    confirmed = api_request("GET", endpoint, **request_options)
+    confirmed_result = confirmed.get("result") if isinstance(confirmed, Mapping) else None
+    confirmed_values = _schedule_values(
+        confirmed_result.get("schedules") if isinstance(confirmed_result, Mapping) else None,
+        failure_code="publish_reconciliation_required",
+    )
+    if any(cron not in confirmed_values for cron in merged):
+        raise LiteCloudSetupError(
+            "初回Cron登録の完了を確認できません。再公開は行わず照合を続けてください。",
+            failure_code="publish_reconciliation_required",
+        )
+    return {
+        "verified": True,
+        "changed": True,
+        "schedules": confirmed_values,
+        "added": missing,
+    }
 
 
 def _wrangler_auth_token(
@@ -4148,7 +4335,13 @@ def build_initial_publish_confirmation(operation: Mapping[str, Any]) -> dict[str
         "d1_schema_version": current["d1_schema_version"],
         "version_id": current["version_id"],
         "worker_url_candidate": current.get("worker_url") or "公開後に確定",
-        "changes": ["未公開versionを100% trafficで明示公開"],
+        "changes": [
+            "未公開versionを100% trafficで明示公開",
+            (
+                "初回Cronを登録（毎日「17 3 * * *」・5分ごと「*/5 * * * *」、"
+                "Cloudflareの利用量・契約により料金の可能性）"
+            ),
+        ],
         "fee_notice": "Cloudflareの利用量や契約によって料金が発生する可能性があります。",
         "confirmation_required": True,
         "deployment_created": False,
@@ -4251,6 +4444,7 @@ def publish_initial_version_synthetic(
     confirmed_operation_id: str,
     runner: Callable[..., Any],
     postflight: Callable[[], Mapping[str, Any]],
+    schedule_deployer: Callable[[], Mapping[str, Any]],
     root: Optional[Path] = None,
     metadata_root: Optional[Path] = None,
     node_command: str | Path | None = "node",
@@ -4359,6 +4553,68 @@ def publish_initial_version_synthetic(
     current.update(state="deployed", worker=worker, failed_step="", failure_code=None)
     _append_completed_step(current, "initial_version_deployed")
     _save_resource_checkpoint(current, "deployed", metadata_root=metadata_root, checkpoint=checkpoint)
+
+    _append_completed_step(current, "initial_schedules_deploy_requested")
+    _save_resource_checkpoint(
+        current,
+        "initial_schedules_deploy_requested",
+        metadata_root=metadata_root,
+        checkpoint=checkpoint,
+    )
+    try:
+        schedules = schedule_deployer()
+    except LiteCloudSetupError as exc:
+        current.update(
+            state="publish_reconciliation_required",
+            failed_step="initial_schedules_deploy",
+            failure_code="publish_reconciliation_required",
+        )
+        _save_resource_checkpoint(
+            current,
+            "initial_schedules_reconciliation_required",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise exc
+    except Exception as exc:
+        current.update(
+            state="publish_reconciliation_required",
+            failed_step="initial_schedules_deploy",
+            failure_code="publish_reconciliation_required",
+        )
+        _save_resource_checkpoint(
+            current,
+            "initial_schedules_reconciliation_required",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise LiteCloudSetupError(
+            "初回Cron登録の完了状態を確認できません。versionは再公開しません。",
+            failure_code="publish_reconciliation_required",
+        ) from exc
+    if not isinstance(schedules, Mapping) or schedules.get("verified") is not True:
+        current.update(
+            state="publish_reconciliation_required",
+            failed_step="initial_schedules_deploy",
+            failure_code="publish_reconciliation_required",
+        )
+        _save_resource_checkpoint(
+            current,
+            "initial_schedules_reconciliation_required",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise LiteCloudSetupError(
+            "初回Cron登録の完了を確認できません。versionは再公開しません。",
+            failure_code="publish_reconciliation_required",
+        )
+    _append_completed_step(current, "initial_schedules_deployed")
+    _save_resource_checkpoint(
+        current,
+        "initial_schedules_deployed",
+        metadata_root=metadata_root,
+        checkpoint=checkpoint,
+    )
     current = _enable_confirmed_worker_public_url(
         current,
         public_url_enabler=public_url_enabler,
@@ -4452,6 +4708,7 @@ def publish_initial_version(
     node_command: str | Path | None = None,
     checkpoint: Optional[Callable[[str, Mapping[str, Any]], None]] = None,
     public_url_enabler: Optional[Callable[[str], Mapping[str, Any]]] = None,
+    schedule_deployer: Optional[Callable[[], Mapping[str, Any]]] = None,
 ) -> dict[str, Any]:
     """別の公開確認後だけ、準備済みversionを100% trafficへ公開する。"""
     current = _confirmed_external_operation(
@@ -4492,11 +4749,25 @@ def publish_initial_version(
                 node_command=node_command,
             )
 
+    if schedule_deployer is None:
+        config_name = _relay_config_name(current)
+
+        def schedule_deployer() -> Mapping[str, Any]:
+            return ensure_cloudflare_worker_schedules(
+                account_id=account_id,
+                worker_name=worker_name,
+                config_path=relay / config_name,
+                runner=fixed_runner,
+                relay=relay,
+                node_command=node_command,
+            )
+
     result = publish_initial_version_synthetic(
         current,
         confirmed_operation_id=current["operation_id"],
         runner=fixed_runner,
         postflight=postflight,
+        schedule_deployer=schedule_deployer,
         root=root,
         metadata_root=metadata_root,
         node_command=node_command,
@@ -4618,6 +4889,162 @@ def _active_deployment_match(payload: Any, version_id: str) -> Optional[dict[str
     return matches[0] if len(matches) == 1 else None
 
 
+def resume_initial_schedules(
+    operation: Mapping[str, Any],
+    *,
+    confirmed_operation_id: str,
+    confirmed_resource_plan_digest: str,
+    confirmed_account_id: str,
+    allow_external_changes: bool,
+    schedule_deployer: Optional[Callable[[], Mapping[str, Any]]] = None,
+    runner: Callable[..., Any] = subprocess.run,
+    root: Optional[Path] = None,
+    metadata_root: Optional[Path] = None,
+    node_command: str | Path | None = None,
+    checkpoint: Optional[Callable[[str, Mapping[str, Any]], None]] = None,
+) -> dict[str, Any]:
+    """公開済みversionを再deployせず、初回Cron登録だけを明示再開する。
+
+    公開確認とaccount固定を再確認した後、active deploymentをGETで照合し、
+    ``schedule_deployer`` のGET→不足分PUT→GETだけを実行する。通常の
+    ``reconcile_initial_publish_or_postflight`` から暗黙に呼び出してはならない。
+    """
+
+    current = _confirmed_external_operation(
+        operation,
+        confirmed_operation_id=confirmed_operation_id,
+        confirmed_resource_plan_digest=confirmed_resource_plan_digest,
+        confirmed_account_id=confirmed_account_id,
+        allow_external_changes=allow_external_changes,
+    )
+    if "initial_schedules_deployed" in current.get("completed_steps", []):
+        return {**current, "external_changes_enabled": True, "deployment_created": True}
+    if current.get("state") not in {
+        "publish_reconciliation_required",
+        "deployed",
+        "postflight_failed",
+    } or "initial_version_deployed" not in current.get("completed_steps", []):
+        raise LiteCloudSetupError(
+            "初回Cron登録を再開できる公開状態ではありません。",
+            failure_code="operation_record_state_invalid",
+        )
+    version_id = _uuid_identifier(current.get("version_id"))
+    if not version_id:
+        raise LiteCloudSetupError(
+            "照合対象version IDが不正です。再deployは行いません。",
+            failure_code="publish_reconciliation_required",
+        )
+    relay = Path(root) if root is not None else relay_root()
+    node_command, wrangler, _wrangler_cli, _runtime = _command_runtime(
+        relay, node_command=node_command, runner=runner
+    )
+    account_id = str((current.get("account") or {}).get("id") or "")
+    worker_name = str((current.get("worker") or {}).get("name") or "")
+    fixed_runner = _account_fixed_runner(runner, account_id)
+    payload = _reconciliation_json(
+        [node_command, str(wrangler), "deployments", "status", "--name", worker_name, "--json"],
+        runner=fixed_runner,
+        cwd=relay,
+        failure_code="publish_reconciliation_required",
+    )
+    match = _active_deployment_match(payload, version_id)
+    if match is None:
+        current.update(
+            state="publish_reconciliation_required",
+            failed_step="initial_version_deploy_reconcile",
+            failure_code="publish_reconciliation_required",
+            last_remote_check_at=_utc_now(),
+        )
+        _save_resource_checkpoint(
+            current,
+            "publish_reconciliation_unresolved",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise LiteCloudSetupError(
+            "対象versionが100% activeであることを確認できません。Cron登録は行いません。",
+            failure_code="publish_reconciliation_required",
+        )
+
+    if schedule_deployer is None:
+        config_name = _relay_config_name(current)
+
+        def schedule_deployer() -> Mapping[str, Any]:
+            return ensure_cloudflare_worker_schedules(
+                account_id=account_id,
+                worker_name=worker_name,
+                config_path=relay / config_name,
+                runner=fixed_runner,
+                relay=relay,
+                node_command=node_command,
+            )
+
+    current.update(
+        state="publish_reconciliation_required",
+        failed_step="initial_schedules_deploy",
+        failure_code="publish_reconciliation_required",
+        last_remote_check_at=_utc_now(),
+    )
+    _append_completed_step(current, "initial_schedules_deploy_requested")
+    _save_resource_checkpoint(
+        current,
+        "initial_schedules_deploy_requested",
+        metadata_root=metadata_root,
+        checkpoint=checkpoint,
+    )
+    try:
+        schedules = schedule_deployer()
+    except LiteCloudSetupError:
+        _save_resource_checkpoint(
+            current,
+            "initial_schedules_reconciliation_required",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise
+    except Exception as exc:
+        _save_resource_checkpoint(
+            current,
+            "initial_schedules_reconciliation_required",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise LiteCloudSetupError(
+            "初回Cron登録の完了状態を確認できません。versionは再公開しません。",
+            failure_code="publish_reconciliation_required",
+        ) from exc
+    if not isinstance(schedules, Mapping) or schedules.get("verified") is not True:
+        _save_resource_checkpoint(
+            current,
+            "initial_schedules_reconciliation_required",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise LiteCloudSetupError(
+            "初回Cron登録の完了を確認できません。versionは再公開しません。",
+            failure_code="publish_reconciliation_required",
+        )
+
+    worker = dict(current.get("worker") or {})
+    worker["deployment_id"] = match["deployment_id"]
+    current.update(
+        state="deployed",
+        worker=worker,
+        failed_step="",
+        failure_code=None,
+        last_remote_check_at=_utc_now(),
+    )
+    _append_completed_step(current, "initial_schedules_deployed")
+    _append_completed_step(current, "initial_publish_reconciled")
+    saved = _save_resource_checkpoint(
+        current,
+        "initial_schedules_deployed",
+        metadata_root=metadata_root,
+        checkpoint=checkpoint,
+    )
+    return {**saved, "external_changes_enabled": True, "deployment_created": True}
+
+
 def reconcile_initial_publish_or_postflight(
     operation: Mapping[str, Any],
     *,
@@ -4633,7 +5060,11 @@ def reconcile_initial_publish_or_postflight(
     checkpoint: Optional[Callable[[str, Mapping[str, Any]], None]] = None,
     public_url_enabler: Optional[Callable[[str], Mapping[str, Any]]] = None,
 ) -> dict[str, Any]:
-    """公開状態を読み取り照合し、再deployせずpostflightだけを完了する。"""
+    """公開状態を読み取り照合し、再deployせずpostflightだけを完了する。
+
+    初回Cron登録が未確定の場合は、ここでは外部変更を行わず明示的な
+    ``resume_initial_schedules`` に戻す。読み取り照合関数へ暗黙のPUTを混ぜない。
+    """
     current = _confirmed_external_operation(
         operation,
         confirmed_operation_id=confirmed_operation_id,
@@ -4713,6 +5144,22 @@ def reconcile_initial_publish_or_postflight(
         last_remote_check_at=_utc_now(),
     )
     _append_completed_step(current, "initial_version_deployed")
+    if "initial_schedules_deployed" not in current.get("completed_steps", []):
+        current.update(
+            state="publish_reconciliation_required",
+            failed_step="initial_schedules_reconcile",
+            failure_code="publish_reconciliation_required",
+        )
+        _save_resource_checkpoint(
+            current,
+            "initial_version_reconciled",
+            metadata_root=metadata_root,
+            checkpoint=checkpoint,
+        )
+        raise LiteCloudSetupError(
+            "公開済みversionを確認しました。初回Cron登録が未確認のため、Cron登録の再開を明示してください。",
+            failure_code="publish_reconciliation_required",
+        )
     _append_completed_step(current, "initial_publish_reconciled")
     _save_resource_checkpoint(
         current,

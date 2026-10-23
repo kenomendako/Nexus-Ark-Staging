@@ -1,6 +1,6 @@
-import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=110";
-import { parsePairingHandoff } from "./pairing-handoff.js?v=110";
-import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=110";
+import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=111";
+import { parsePairingHandoff } from "./pairing-handoff.js?v=111";
+import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=111";
 import {
   LITE_UPDATE_RESUME_THROTTLE_MS,
   LITE_UPDATE_TIMEOUT_MS,
@@ -10,9 +10,9 @@ import {
   liteBuildMetadataUrl,
   liteServiceWorkerPaths,
   liteUpdateBlockers,
-} from "./lite-update-state.js?v=110";
+} from "./lite-update-state.js?v=111";
 
-const LITE_UI_BUILD = "v110";
+const LITE_UI_BUILD = "v111";
 
 function isCloudHostedLite() {
   return true;
@@ -196,6 +196,7 @@ const els = {
   homeModeButton: document.querySelector("#home-mode-button"),
   travelModeButton: document.querySelector("#travel-mode-button"),
   returnHomeButton: document.querySelector("#return-home-button"),
+  travelReturnStatus: document.querySelector("#travel-return-status"),
   travelWorkerUrl: document.querySelector("#travel-worker-url"),
   travelDeviceName: document.querySelector("#travel-device-name"),
   travelPairingCode: document.querySelector("#travel-pairing-code"),
@@ -599,6 +600,12 @@ function setConnectionStatus(text, mode = "idle") {
 function setSyncStatus(text, mode = "idle") {
   els.syncStatus.textContent = text || "";
   els.syncStatus.dataset.mode = mode;
+}
+
+function setTravelReturnStatus(text, mode = "idle") {
+  els.travelReturnStatus.textContent = text || "";
+  els.travelReturnStatus.dataset.mode = mode;
+  els.travelReturnStatus.hidden = !text;
 }
 
 function currentLiteUpdateBlockers() {
@@ -2432,6 +2439,12 @@ function renderTravelPendingRecovery() {
   const active = Boolean(view && view.inspection.state !== "none");
   els.travelPendingPanel.hidden = !active && !archive.length && !archiveFailed;
   if (els.travelPendingPanel.hidden) return;
+  // 新しい未確定送信は操作を開示し、保管後は会話へ戻す。同じ状態の再描画では開閉を保つ。
+  const recoveryState = active ? "pending" : "archived";
+  if (els.travelPendingPanel.dataset.recoveryState !== recoveryState) {
+    els.travelPendingPanel.open = active || archiveFailed;
+    els.travelPendingPanel.dataset.recoveryState = recoveryState;
+  }
   els.travelPendingTitle.textContent = active ? "前回の送信を確認" : "保管した送信記録";
   els.travelPendingHistory.hidden = !archive.length;
   els.travelPendingHistoryTitle.textContent = "保管した送信記録（" + archive.length + "件）";
@@ -2470,6 +2483,15 @@ function renderTravelPendingRecovery() {
     if (!pending?.worker_url) message += " 旧形式の記録で元の送信先を確実に照合できないため、本体側で状態を確認してください。";
   } else if (view.remote) {
     message = "前回の送信処理が終わったことをまだ確認できません。しばらくしてから結果を再確認してください。";
+    message += " 通信が切れた送信は、処理開始から30分経過後に定期回収されます。元の文章は自動で再送しません。";
+    const createdAt = Date.parse(view.remote.reserved_at || pending?.created_at);
+    if (Number.isFinite(createdAt)) {
+      const minutes = Math.max(0, Math.floor((Date.now() - createdAt) / 60000));
+      message += ` 送信から約${minutes}分が経過しています。`;
+      if (minutes >= 35) {
+        message += " 通常の回収目安を過ぎています。追加送信せず、下の「確認用の記録」を保存して状況を確認してください。定期処理の遅延などで、さらに時間がかかる場合があります。";
+      }
+    }
   }
   if (!navigator.locks?.request) message += " このブラウザーでは複数タブの同時操作を避けてください。";
   els.travelPendingStatus.textContent = message;
@@ -2485,6 +2507,11 @@ function renderTravelPendingRecovery() {
   els.travelPendingUnknownActions.hidden = !mayAcknowledge;
   els.travelPendingAcknowledge.disabled = travelPendingChecking || !mayAcknowledge || !els.travelPendingUnknownConfirm.checked;
   els.travelPendingHomeRecovered.disabled = travelPendingChecking || !els.travelPendingHomeConfirm.checked;
+  els.travelPendingCheck.textContent = travelPendingChecking ? "確認しています…" : "送信結果を再確認";
+  if (!travelPendingChecking && view.checkedAt) {
+    const checkedAt = new Date(view.checkedAt).toLocaleTimeString();
+    els.travelPendingContext.textContent += ` / 最終確認 ${checkedAt}`;
+  }
 }
 
 async function refreshTravelPendingRecovery() {
@@ -2519,6 +2546,7 @@ async function refreshTravelPendingRecovery() {
     travelPendingView.errorCode = travelAdapter.errorCode(error) || "check_failed";
     travelPendingView.httpStatus = Number(error.status || 0);
   } finally {
+    travelPendingView.checkedAt = new Date().toISOString();
     travelPendingChecking = false;
     renderTravelPendingRecovery();
   }
@@ -2586,6 +2614,9 @@ async function downloadTravelPendingDiagnostic() {
     format: "nexus-lite-pending-diagnostic-v1",
     archive_readable: archiveReadable,
     saved_at: new Date().toISOString(),
+    request_created_at: Number.isFinite(Date.parse(pending.created_at)) ? new Date(pending.created_at).toISOString() : null,
+    reserved_at: Number.isFinite(Date.parse(travelPendingView?.remote?.reserved_at)) ? new Date(travelPendingView.remote.reserved_at).toISOString() : null,
+    last_checked_at: Number.isFinite(Date.parse(travelPendingView?.checkedAt)) ? new Date(travelPendingView.checkedAt).toISOString() : null,
     storage_state: inspection.state,
     worker_origin: origin,
     client_message_id: id(pending.client_message_id),
@@ -2932,34 +2963,50 @@ async function maybeAutoRefreshStandby({ forceCheck = false, forceSave = false }
 }
 
 async function returnTravelToHome() {
+  if (state.returningHome) return;
   if (state.travelEntryPromise) throw new Error("独立モードを開き終えてから帰宅してください。");
   const session = state.currentTravelSession || state.travelSession;
   if (!session) throw new Error("独立モードsessionがありません。");
-  if (!await probeHome()) throw new Error("本体へ接続してから帰宅してください。");
-  const resuming = String(session.status) === "returning";
-  if (!window.confirm(resuming
-    ? "途中の署名付き帰宅を再開し、本体への統合を完了しますか？"
-    : "独立モード側の未確定送信を確認し、署名付き差分を本体へ統合しますか？")) return;
-  let pending;
-  try {
-    pending = await travelAdapter.pendingStatus();
-  } catch {
-    throw new Error("独立モードの送信結果を確認できないため、帰宅を停止しました。接続を確認して再試行してください。");
-  }
-  if (pending) {
-    throw new Error("独立モードの送信結果が未確定です。帰宅を停止しました。");
-  }
-  state.travelContextRevision = (state.travelContextRevision || 0) + 1;
   state.returningHome = true;
   applyTravelSessionControls();
+  let importCompleted = false;
+  setTravelReturnStatus("帰宅の準備中です。本体への接続を確認しています…", "checking");
   try {
+    if (!await probeHome()) {
+      throw new Error("本体に接続できないため、帰宅は開始していません。PCのNexus Arkと、利用している場合はTailscaleを起動し、本体の接続設定を確認してください。");
+    }
+    const resuming = String(session.status) === "returning";
+    if (!window.confirm(resuming
+      ? "途中の署名付き帰宅を再開し、本体への統合を完了しますか？"
+      : "独立モード側の未確定送信を確認し、署名付き差分を本体へ統合しますか？")) {
+      setTravelReturnStatus("帰宅を取りやめました。お出かけの状態は変更していません。", "idle");
+      return;
+    }
+    setTravelReturnStatus("送信結果を確認しています。まだ本体への取り込みは開始していません…", "checking");
+    let pending;
+    try {
+      pending = await travelAdapter.pendingStatus();
+    } catch {
+      await refreshTravelPendingRecovery().catch(() => {});
+      throw new Error("送信結果を確認できないため、帰宅は開始していません。接続を確認し、チャットの「前回の送信を確認」を開いてください。");
+    }
+    if (pending) {
+      await refreshTravelPendingRecovery().catch(() => {});
+      throw new Error(pending.status === "outcome_unknown"
+        ? "結果不明の送信記録が残っているため、帰宅は開始していません。チャットの「前回の送信を確認」で内容を確認し、「結果不明の記録を保管して続ける」を押してから帰宅してください。"
+        : "送信結果がまだ確定していないため、帰宅は開始していません。チャットの「前回の送信を確認」から結果を再確認してください。");
+    }
+    state.travelContextRevision = (state.travelContextRevision || 0) + 1;
+    setTravelReturnStatus("帰宅処理中です。署名を確認して会話を本体へ取り込んでいます。完了表示までお待ちください…", "checking");
     await api("/api/v1/lite-travel/return", {
       method: "POST",
       body: JSON.stringify({ travel_session_id: session.travel_session_id }),
       timeoutMs: 120000,
     });
+    importCompleted = true;
     state.travelSession = null;
     state.currentTravelSession = null;
+    setTravelReturnStatus("本体への取り込みが完了しました。本体接続へ切り替えています…", "checking");
     await enterHomeMode();
     await refreshTravelReadiness();
     setSyncStatus("署名付き帰宅を完了し、本体接続へ戻りました。お出かけ前データを更新しています。");
@@ -2973,9 +3020,14 @@ async function returnTravelToHome() {
     } else {
       setSyncStatus("署名付き帰宅を完了しました。お出かけ前データは未保存です。必要なら設定から更新してください。", "warn");
     }
+    setTravelReturnStatus("帰宅が完了しました。本体へ戻りました。通常どおりご利用いただけます。", "ok");
   } catch (error) {
+    const failure = importCompleted
+      ? new Error("会話の本体への取り込みは完了していますが、画面の接続更新を完了できませんでした。PC本体の帰宅画面で状態を確認してください。")
+      : error;
+    setTravelReturnStatus(failure.message || "帰宅の完了を確認できません。PC本体の帰宅画面で状態を確認してください。", "warn");
     await refreshTravelReadiness().catch(() => {});
-    throw error;
+    throw failure;
   } finally {
     state.returningHome = false;
     applyTravelSessionControls();
@@ -6592,12 +6644,18 @@ window.setInterval(() => {
 }, STANDBY_AUTO_CHECK_INTERVAL_MS);
 window.setInterval(renderSnapshotFreshness, 60_000);
 
-els.homeModeButton.addEventListener("click", () => handleHomeModeAction().catch((error) => setSyncStatus(error.message, "warn")));
+els.homeModeButton.addEventListener("click", () => handleHomeModeAction().catch((error) => {
+  setTravelReturnStatus(error.message, "warn");
+  setSyncStatus(error.message, "warn");
+}));
 els.travelModeButton.addEventListener("click", () => enterTravelMode().catch((error) => {
   els.travelReadiness.textContent = error.message;
   openConnectionSettings(els.travelWorkerUrl);
 }));
-els.returnHomeButton.addEventListener("click", () => returnTravelToHome().catch((error) => setSyncStatus(error.message, "warn")));
+els.returnHomeButton.addEventListener("click", () => returnTravelToHome().catch((error) => {
+  setTravelReturnStatus(error.message, "warn");
+  setSyncStatus(error.message, "warn");
+}));
 els.standbyShortcutButton.addEventListener("click", openStandbySettings);
 els.travelPairButton.addEventListener("click", () => pairTravelDevice().catch((error) => setSyncStatus(error.message, "warn")));
 window.addEventListener("storage", (event) => {

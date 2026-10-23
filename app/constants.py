@@ -54,6 +54,11 @@ METADATA_DIR = "metadata"           # [NEW] 各種データ・セッション情
 # Argon固有の送信制約。未知の将来モデルへ推測で適用しない。
 GEMINI_ARGON_MODEL_IDS = frozenset({"gemini-4-argon", "gemini-4-argon-cyber-permissive"})
 
+# Lite初回設定で提示するGeminiモデル候補。
+# 本体全体のモデル一覧や既存ユーザーの選択を更新せず、Liteの初回候補としてのみ使う。
+# 実際の利用可否は出発前のWorker liveモデル一覧で照合する。
+LITE_DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+
 
 # --- UIとAPIの挙動に関する定数 ---
 # (以降、変更なし)

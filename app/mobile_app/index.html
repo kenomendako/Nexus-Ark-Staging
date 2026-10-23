@@ -8,7 +8,7 @@
     <title>Nexus Ark Lite</title>
     <link rel="manifest" href="/lite/manifest.webmanifest">
     <link rel="icon" href="/lite/icon.png">
-    <link rel="stylesheet" href="/lite/static/styles.css?v=110">
+    <link rel="stylesheet" href="/lite/static/styles.css?v=111">
   </head>
   <body data-active-page="chat">
     <main class="app-shell">
@@ -120,13 +120,13 @@
           </div>
         </details>
         <div class="notice-panel" id="secure-origin-notice" hidden></div>
-        <section class="notice-panel" id="travel-send-failure" role="status" hidden>
-          <strong>前回の送信でエラーが発生しました</strong>
+        <details class="notice-panel" id="travel-send-failure" hidden>
+          <summary>前回の送信エラー（詳細）</summary>
           <p id="travel-send-failure-detail"></p>
           <p class="management-meta">この文章は自動で再送しません。確認コードを添えて状況を伝えられます。</p>
-        </section>
-        <section class="travel-pending-panel" id="travel-pending-panel" aria-labelledby="travel-pending-title" hidden>
-          <strong id="travel-pending-title">前回の送信を確認</strong>
+        </details>
+        <details class="travel-pending-panel" id="travel-pending-panel" aria-labelledby="travel-pending-title" hidden>
+          <summary id="travel-pending-title">前回の送信を確認</summary>
           <p id="travel-pending-status" role="status"></p>
           <p class="management-meta" id="travel-pending-context"></p>
           <div class="travel-pending-actions">
@@ -159,7 +159,7 @@
             <p class="management-meta">接続先と送信の確認情報を、この端末へ保存できます。送信本文や認証キーは含めません。</p>
             <button class="secondary-button compact-button" id="travel-pending-export" type="button">確認用の記録を保存</button>
           </details>
-        </section>
+        </details>
         <div class="messages" id="messages" aria-live="polite"></div>
         <button class="new-message-button" id="new-message-button" type="button" hidden>新しい応答 ↓</button>
         <form class="composer" id="chat-form">
@@ -203,6 +203,7 @@
                   <button class="secondary-button compact-button" id="travel-mode-button" type="button">独立モード</button>
                   <button class="secondary-button compact-button" id="return-home-button" type="button" hidden>本体へ戻る</button>
                 </div>
+                <p class="notice-panel" id="travel-return-status" role="status" aria-live="polite" hidden></p>
               </section>
               <div class="connection-wizard-heading">
                 <div>
@@ -757,6 +758,6 @@
       <button class="icon-button close-dialog-button" id="close-image-dialog" type="button" aria-label="閉じる">×</button>
       <img id="image-dialog-img" alt="拡大画像">
     </dialog>
-    <script src="/lite/static/app.js?v=110" type="module"></script>
+    <script src="/lite/static/app.js?v=111" type="module"></script>
   </body>
 </html>

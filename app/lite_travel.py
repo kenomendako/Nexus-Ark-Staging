@@ -383,7 +383,19 @@ def get_settings() -> Dict[str, Any]:
         # 2,048は旧版の固定初期値。明示設定との区別がなかったため自動へ移行する。
         if raw.get("budget_max_output_tokens") == LEGACY_DEFAULT_MAX_OUTPUT_TOKENS:
             defaults["budget_max_output_tokens"] = None
+    # 初回設定ではGeminiの最新候補を提示する。既存の明示モデルは上書きしない。
+    # カタログでの利用可否確認は、出発前のvalidate_snapshot_initial_routesが担当する。
+    if not str(defaults.get("model_id") or "").strip():
+        profile_id = str(defaults.get("credential_profile_id") or "").strip()
+        provider = profile_id.split("-", 1)[0].lower()
+        defaults["model_id"] = config_manager.get_lite_default_model(provider)
     return defaults
+
+
+def get_lite_initial_model_candidate(provider: str, current_model: str = "") -> str:
+    """Lite初回候補を返す。既存の選択値を優先し、候補は未確認のままとする。"""
+    current = str(current_model or "").strip().removeprefix("⭐ ").strip()
+    return current or config_manager.get_lite_default_model(provider)
 
 
 def save_settings(
