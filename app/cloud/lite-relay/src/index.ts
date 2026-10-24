@@ -37,7 +37,7 @@ import {
   validateRemoteD1,
 } from "./remote-validation";
 import { deleteSessionContent, getEventsAfterCursor, recoverStaleRequests } from "./storage";
-import { messageRequestStatus, streamTravelMessage } from "./travel-chat";
+import { messageRequestStatus, streamTravelMessage, type StreamTravelLifecycle } from "./travel-chat";
 import { getUsageSummary } from "./budget";
 import { deleteProviderCaches } from "./provider-cache";
 import {
@@ -96,7 +96,7 @@ export async function storageCompatibilityState(db: D1Database): Promise<{
 }
 
 const coreHandler = {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, context?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/v1/health") {
       const storage = await storageCompatibilityState(env.DB);
@@ -534,7 +534,18 @@ const coreHandler = {
     if (request.method === "POST" && messagesId) {
       if (!device) return json({ error: "unauthorized" }, 401);
       try {
-        return await streamTravelMessage(env.DB, env, messagesId, await request.json());
+        const lifecycle: StreamTravelLifecycle = { signal: request.signal };
+        if (context) lifecycle.waitUntil = (promise) => context.waitUntil(promise);
+        return await streamTravelMessage(
+          env.DB,
+          env,
+          messagesId,
+          await request.json(),
+          undefined,
+          undefined,
+          undefined,
+          lifecycle,
+        );
       } catch (error) {
         return json({ error: errorCode(error) }, 400);
       }
@@ -570,12 +581,12 @@ function withCors(response: Response, request: Request, env: Env): Response {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, context?: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") {
       const allowed = request.headers.get("Origin") === env.LITE_ALLOWED_ORIGIN;
       return withCors(new Response(null, { status: allowed ? 204 : 403 }), request, env);
     }
-    return withCors(await coreHandler.fetch(request, env), request, env);
+    return withCors(await coreHandler.fetch(request, env, context), request, env);
   },
   scheduled(controller: ScheduledController, env: Env, context: ExecutionContext): Promise<void> {
     return coreHandler.scheduled(controller, env, context);

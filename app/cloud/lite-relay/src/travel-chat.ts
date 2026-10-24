@@ -32,6 +32,11 @@ interface ChatInput {
   persona_id: string | null;
 }
 
+export interface StreamTravelLifecycle {
+  signal?: AbortSignal;
+  waitUntil?: (promise: Promise<unknown>) => void;
+}
+
 interface SessionContext extends PersonaRoute {
   snapshot_json: string;
   snapshot_hash: string;
@@ -229,6 +234,7 @@ export async function streamTravelMessage(
   fetcher: typeof fetch = fetch,
   clock: () => Date = () => new Date(),
   providerTimeoutMs = PROVIDER_TOTAL_TIMEOUT_MS,
+  lifecycle: StreamTravelLifecycle = {},
 ): Promise<Response> {
   const input = parseInput(rawInput);
   const session = await sessionContext(db, sessionId, input.persona_id);
@@ -324,22 +330,82 @@ export async function streamTravelMessage(
     return Response.json({ error: "message_start_conflict" }, { status: 409 });
   }
 
-  const deadline = createProviderDeadline(fetcher, providerTimeoutMs);
+  const deadline = createProviderDeadline(fetcher, providerTimeoutMs, lifecycle.signal);
+  let terminalCleanup: Promise<void> | null = null;
+  let cleanupScheduled = false;
+  let removeLifecycleAbortListener: (() => void) | null = null;
+  const settleOutcomeUnknown = (): Promise<void> => {
+    if (terminalCleanup) return terminalCleanup;
+    terminalCleanup = (async () => {
+      try {
+        const current = await getMessageRequest(db, input.client_message_id);
+        if (!current || (current.status !== "reserved" && current.status !== "provider_started")) return;
+        await markRequestTerminal(db, input.client_message_id, "outcome_unknown", clock().toISOString());
+        const finalized = await getMessageRequest(db, input.client_message_id);
+        if (finalized?.status === "outcome_unknown") {
+          // statusを先に結果不明へ遷移させ、既知失敗／completedを後からheldへ巻き戻さない。
+          await holdBudget(db, input.client_message_id);
+        }
+      } catch {
+        // D1障害時はCron回収へ委ね、abort経路から未処理rejectionを出さない。
+      }
+    })();
+    return terminalCleanup;
+  };
+  const scheduleOutcomeUnknown = (): Promise<void> => {
+    const cleanup = settleOutcomeUnknown();
+    if (lifecycle.waitUntil && !cleanupScheduled) {
+      cleanupScheduled = true;
+      try {
+        lifecycle.waitUntil(cleanup.catch(() => undefined));
+      } catch {
+        // waitUntilが利用できないテスト／終了間際でも同期cleanupは継続する。
+      }
+    }
+    return cleanup;
+  };
+  const removeAbortListener = () => {
+    removeLifecycleAbortListener?.();
+    removeLifecycleAbortListener = null;
+  };
+  const outcomeUnknownResponse = async (): Promise<Response> => {
+    deadline.stop();
+    deadline.abort();
+    removeAbortListener();
+    await scheduleOutcomeUnknown();
+    return Response.json({ error: "provider_outcome_unknown" }, { status: 502 });
+  };
+  const onClientAbort = () => {
+    deadline.stop();
+    deadline.abort();
+    void scheduleOutcomeUnknown().catch(() => undefined);
+  };
+  if (lifecycle.signal) {
+    const listener = () => onClientAbort();
+    lifecycle.signal.addEventListener("abort", listener, { once: true });
+    removeLifecycleAbortListener = () => lifecycle.signal?.removeEventListener("abort", listener);
+    if (lifecycle.signal.aborted) onClientAbort();
+  }
   let cacheContext: ProviderCacheContext | null = null;
+  if (deadline.aborted()) return await outcomeUnknownResponse();
+  const cachePreparation = ensureProviderCache(
+    db,
+    env,
+    profile,
+    session,
+    snapshot,
+    session.snapshot_hash,
+    deadline.fetch,
+    clock(),
+  );
   try {
-    cacheContext = await deadline.wait(ensureProviderCache(
-      db,
-      env,
-      profile,
-      session,
-      snapshot,
-      session.snapshot_hash,
-      deadline.fetch,
-      clock(),
-    ));
+    cacheContext = await deadline.wait(cachePreparation);
   } catch {
+    void cachePreparation.catch(() => undefined);
+    if (deadline.aborted()) return await outcomeUnknownResponse();
     cacheContext = null;
   }
+  if (deadline.aborted()) return await outcomeUnknownResponse();
   let providerResponse: Response;
   try {
     const providerRequest = buildProviderRequest(
@@ -359,15 +425,14 @@ export async function streamTravelMessage(
       deadline.fetch,
     );
   } catch {
-    deadline.stop();
-    deadline.abort();
-    await holdBudget(db, input.client_message_id);
-    await markRequestTerminal(db, input.client_message_id, "outcome_unknown", clock().toISOString());
-    return Response.json({ error: "provider_outcome_unknown" }, { status: 502 });
+    return await outcomeUnknownResponse();
   }
+  // providerのResponseが遅れて到着しても、先行したclient abortを既知失敗へ確定しない。
+  if (deadline.aborted()) return await outcomeUnknownResponse();
   if (!providerResponse.ok || !providerResponse.body) {
     deadline.stop();
     deadline.abort();
+    removeAbortListener();
     const failure = providerHttpFailure(session.provider, providerResponse.status);
     await recordProviderHttpFailure(db, input.client_message_id, providerResponse.status, failure.error);
     if (failure.requestMayBeBilled) await holdBudget(db, input.client_message_id);
@@ -383,27 +448,29 @@ export async function streamTravelMessage(
   let cancelled = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const reader = providerResponse.body!.getReader();
-      providerReader = reader;
-      const decoder = new TextDecoder();
-      let raw = "";
-      let buffer = "";
-      let started = false;
-      const emitRecord = (record: string) => {
-        const normalized = normalizeProviderStream(session.provider, record + "\n\n", session.model_id);
-        for (const event of normalized.events) {
-          if (event.type === "response.started") {
-            if (started) continue;
-            started = true;
-          }
-          if (["response.started", "response.text.delta", "response.usage"].includes(event.type)) {
-            controller.enqueue(sse(event));
-          }
-        }
-      };
+      let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
       try {
+        reader = providerResponse.body!.getReader();
+        providerReader = reader;
+        if (cancelled) throw new Error("travel_client_disconnected");
+        const decoder = new TextDecoder();
+        let raw = "";
+        let buffer = "";
+        let started = false;
+        const emitRecord = (record: string) => {
+          const normalized = normalizeProviderStream(session.provider, record + "\n\n", session.model_id);
+          for (const event of normalized.events) {
+            if (event.type === "response.started") {
+              if (started) continue;
+              started = true;
+            }
+            if (["response.started", "response.text.delta", "response.usage"].includes(event.type)) {
+              controller.enqueue(sse(event));
+            }
+          }
+        };
         while (true) {
-          const chunk = await deadline.read(reader);
+          const chunk = await deadline.read(reader!);
           if (chunk.done) break;
           const text = decoder.decode(chunk.value, { stream: true });
           raw += text;
@@ -563,26 +630,28 @@ export async function streamTravelMessage(
         }
         controller.close();
       } catch {
-        await holdBudget(db, input.client_message_id);
-        await markRequestTerminal(db, input.client_message_id, "outcome_unknown", clock().toISOString());
+        await scheduleOutcomeUnknown();
         if (cancelled) return;
         controller.enqueue(sse(deadline.expired()
           ? safeError("stream_interrupted", "応答が時間内に完了しませんでした。結果と利用額は未確定として保留しています。自動再送はしません。")
+          : deadline.aborted()
+            ? safeError("stream_interrupted", "クライアント接続が終了したため、応答の結果と利用額は未確定として保留しています。")
           : safeError("persistence_failed", "応答の確定状態を確認できません。自動再送はしません。")));
         controller.close();
       } finally {
         deadline.stop();
         deadline.abort();
-        void reader.cancel().catch(() => {});
+        removeAbortListener();
+        if (reader) void reader.cancel().catch(() => {});
       }
     },
     async cancel() {
       cancelled = true;
       deadline.stop();
       deadline.abort();
-      void providerReader?.cancel("travel_client_disconnected").catch(() => {});
-      await holdBudget(db, input.client_message_id);
-      await markRequestTerminal(db, input.client_message_id, "outcome_unknown", clock().toISOString());
+      removeAbortListener();
+      if (providerReader) await providerReader.cancel("travel_client_disconnected").catch(() => {});
+      await scheduleOutcomeUnknown();
     },
   });
   return new Response(stream, {

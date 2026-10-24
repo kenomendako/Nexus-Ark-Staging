@@ -82,7 +82,7 @@ await copyFile(path.join(sourceRoot, "static/lite-update-state.js"), path.join(s
 await writeFile(
   path.join(publicRoot, "service-worker.js"),
   replaceLiteScope(await readFile(path.join(sourceRoot, "service-worker.js"), "utf8"))
-    .replace(/nexus-ark-lite-v\d+/, "nexus-ark-lite-travel-phase5-v48"),
+    .replace(/nexus-ark-lite-v\d+/, "nexus-ark-lite-travel-phase5-v49"),
   "utf8",
 );
 await writeFile(

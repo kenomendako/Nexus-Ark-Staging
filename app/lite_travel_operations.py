@@ -1084,6 +1084,59 @@ def _unique_config_object(pairs):
     return result
 
 
+def _load_request_signal_config(config_path: Path) -> tuple[dict[str, Any], list[str]]:
+    config = json.loads(
+        config_path.read_text(encoding="utf-8"), object_pairs_hook=_unique_config_object
+    )
+    if not isinstance(config, dict):
+        raise ValueError("invalid_config")
+    flags = config.get("compatibility_flags", [])
+    if not isinstance(flags, list) or any(
+        not isinstance(flag, str) or not flag.strip() for flag in flags
+    ):
+        raise ValueError("invalid_compatibility_flags")
+    if len(set(flags)) != len(flags):
+        raise ValueError("duplicate_compatibility_flag")
+    disable_request_signal = config.get("disable_request_signal", False)
+    if not isinstance(disable_request_signal, bool):
+        raise ValueError("invalid_request_signal_disable")
+    if "disable_request_signal" in flags or disable_request_signal:
+        raise ValueError("request_signal_disabled")
+    return config, flags
+
+
+def _assert_request_signal_flag_allowed(config_path: Path) -> None:
+    """入力signal flagの無効指定を、設定を書き換える前に検証する。"""
+    try:
+        with file_lock_utils.get_file_lock(config_path.as_posix()):
+            _load_request_signal_config(config_path)
+    except (OSError, ValueError, TypeError, file_lock_utils.Timeout):
+        raise LiteTravelOperationError(
+            "通信切断の検知に必要な設定を安全に確認できませんでした。"
+            "無効指定・JSON形式・書き込み権限を確認してください。クラウド更新は開始していません。"
+        ) from None
+
+
+def _ensure_request_signal_flag(config_path: Path) -> bool:
+    """生成済みJSON設定の項目を保持し、入力Request.signal flagだけを原子的に追加する。"""
+    try:
+        with file_lock_utils.get_file_lock(config_path.as_posix()):
+            config, flags = _load_request_signal_config(config_path)
+            if "enable_request_signal" in flags:
+                return False
+            config["compatibility_flags"] = [*flags, "enable_request_signal"]
+            if not file_lock_utils.safe_text_write(
+                config_path.as_posix(), json.dumps(config, ensure_ascii=False, indent=2) + "\n"
+            ):
+                raise OSError("request_signal_config_write_failed")
+            return True
+    except (OSError, ValueError, TypeError, file_lock_utils.Timeout):
+        raise LiteTravelOperationError(
+            "通信切断の検知に必要な設定を安全に更新できませんでした。"
+            "無効指定・JSON形式・書き込み権限を確認してください。クラウド更新は開始していません。"
+        ) from None
+
+
 def _ensure_request_expiry_cron(config_path: Path) -> bool:
     """生成済みJSON設定の他項目を保持し、回収Cronだけを原子的に追加する。"""
     try:
@@ -1246,10 +1299,13 @@ def run_update(
     if not recovered_config_path:
         raise LiteTravelOperationError("Lite用クラウドの接続設定を自動確認できませんでした。")
     config = lite_travel._resolve_wrangler_config(recovered_config_path)[1]
+    # 明示的な無効指定や壊れた設定は、資産生成を含む更新準備の前に停止する。
+    _assert_request_signal_flag_allowed(config)
     _build_update_assets(
         config, node=node, runner=runner, root=root, operation_id=operation.get("operation_id")
     )
     _ensure_request_expiry_cron(config)
+    _ensure_request_signal_flag(config)
     database = str(operation["database_name"])
     steps = [
         ("bookmark", [node, str(wrangler), "d1", "time-travel", "info", database, "--json", "--config", config.as_posix()]),

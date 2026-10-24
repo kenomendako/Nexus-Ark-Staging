@@ -3,7 +3,7 @@
   "name": "nexus-ark-lite-relay",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-15",
-  "compatibility_flags": ["global_fetch_strictly_public"],
+  "compatibility_flags": ["global_fetch_strictly_public", "enable_request_signal"],
   "workers_dev": true,
   "preview_urls": false,
   "d1_databases": [

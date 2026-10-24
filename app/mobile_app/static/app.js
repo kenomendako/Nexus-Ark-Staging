@@ -1,6 +1,6 @@
-import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=111";
-import { parsePairingHandoff } from "./pairing-handoff.js?v=111";
-import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=111";
+import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=112";
+import { parsePairingHandoff } from "./pairing-handoff.js?v=112";
+import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=112";
 import {
   LITE_UPDATE_RESUME_THROTTLE_MS,
   LITE_UPDATE_TIMEOUT_MS,
@@ -10,9 +10,9 @@ import {
   liteBuildMetadataUrl,
   liteServiceWorkerPaths,
   liteUpdateBlockers,
-} from "./lite-update-state.js?v=111";
+} from "./lite-update-state.js?v=112";
 
-const LITE_UI_BUILD = "v111";
+const LITE_UI_BUILD = "v112";
 
 function isCloudHostedLite() {
   return !window.location.pathname.startsWith("/lite");
@@ -2430,6 +2430,37 @@ async function refreshTravelReadiness() {
 
 let travelPendingView = null;
 let travelPendingChecking = false;
+let travelPendingRefreshPromise = null;
+let travelPendingRefreshQueued = false;
+let travelPendingMutationPromise = null;
+let travelPendingMutationInFlight = false;
+let travelPendingViewGeneration = 0;
+
+function travelPendingConnectionKey() {
+  try {
+    if (typeof travelAdapter.connectionKey === "function") return travelAdapter.connectionKey();
+    if (typeof travelAdapter.configuredBase === "function") return travelAdapter.configuredBase();
+  } catch {
+    // 接続先の読み取りに失敗した確認結果は、現在の画面へ適用しない。
+  }
+  return null;
+}
+
+function invalidateTravelPendingView() {
+  travelPendingViewGeneration += 1;
+  if (travelPendingRefreshPromise) travelPendingRefreshQueued = true;
+}
+
+function travelPendingCheckIsCurrent(check, latestInspection, remote, failed = false) {
+  if (check.generation !== travelPendingViewGeneration) return false;
+  const currentConnectionKey = travelPendingConnectionKey();
+  if (check.connectionKey == null || currentConnectionKey == null) return false;
+  if (check.connectionKey !== currentConnectionKey) return false;
+  if (latestInspection.raw === check.raw) return true;
+  // pendingStatus()が確定状態を確認して同じタブで記録を消した場合だけ、
+  // rawの消失を現在の結果として受け入れる。
+  return !failed && remote === null && latestInspection.state === "none";
+}
 
 function renderTravelPendingRecovery() {
   const view = travelPendingView;
@@ -2483,7 +2514,7 @@ function renderTravelPendingRecovery() {
     if (!pending?.worker_url) message += " 旧形式の記録で元の送信先を確実に照合できないため、本体側で状態を確認してください。";
   } else if (view.remote) {
     message = "前回の送信処理が終わったことをまだ確認できません。しばらくしてから結果を再確認してください。";
-    message += " 通信が切れた送信は、処理開始から30分経過後に定期回収されます。元の文章は自動で再送しません。";
+    message += " 通信の切断を確認できず未確定のまま残った送信は、処理開始から30分経過後に定期回収の対象になります。元の文章は自動で再送しません。";
     const createdAt = Date.parse(view.remote.reserved_at || pending?.created_at);
     if (Number.isFinite(createdAt)) {
       const minutes = Math.max(0, Math.floor((Date.now() - createdAt) / 60000));
@@ -2514,9 +2545,13 @@ function renderTravelPendingRecovery() {
   }
 }
 
-async function refreshTravelPendingRecovery() {
-  if (travelPendingChecking) return;
+async function refreshTravelPendingRecoveryOnce() {
   const inspection = travelAdapter.inspectPending();
+  const check = {
+    generation: travelPendingViewGeneration,
+    connectionKey: travelPendingConnectionKey(),
+    raw: inspection.raw,
+  };
   els.travelPendingUnknownConfirm.checked = false;
   els.travelPendingHomeConfirm.checked = false;
   travelPendingView = { inspection, remote: null, errorCode: "", httpStatus: 0, checkedAt: new Date().toISOString() };
@@ -2525,12 +2560,19 @@ async function refreshTravelPendingRecovery() {
     return;
   }
   travelPendingChecking = true;
-  renderTravelPendingRecovery();
+  let accepted = false;
   try {
+    renderTravelPendingRecovery();
     const remote = await travelAdapter.pendingStatus();
+    const latestInspection = travelAdapter.inspectPending();
+    accepted = travelPendingCheckIsCurrent(check, latestInspection, remote);
+    if (!accepted) {
+      travelPendingRefreshQueued = true;
+      return;
+    }
     travelPendingView.remote = remote;
+    travelPendingView.inspection = latestInspection;
     if (!remote) {
-      travelPendingView.inspection = travelAdapter.inspectPending();
       if (state.mode === "travel" && state.travelSession?.travel_session_id === inspection.pending.session_id) {
         try {
           await loadTravelHistory();
@@ -2543,43 +2585,85 @@ async function refreshTravelPendingRecovery() {
       setSyncStatus("前回の送信処理の終了を確認しました。履歴と利用額を確認してから続けられます。", "ok");
     }
   } catch (error) {
+    let latestInspection;
+    try { latestInspection = travelAdapter.inspectPending(); } catch { latestInspection = { state: "corrupt", raw: null }; }
+    accepted = travelPendingCheckIsCurrent(check, latestInspection, undefined, true);
+    if (!accepted) {
+      travelPendingRefreshQueued = true;
+      return;
+    }
     travelPendingView.errorCode = travelAdapter.errorCode(error) || "check_failed";
     travelPendingView.httpStatus = Number(error.status || 0);
   } finally {
-    travelPendingView.checkedAt = new Date().toISOString();
+    if (accepted) travelPendingView.checkedAt = new Date().toISOString();
     travelPendingChecking = false;
-    renderTravelPendingRecovery();
+    if (accepted) renderTravelPendingRecovery();
   }
+}
+
+function refreshTravelPendingRecovery() {
+  if (travelPendingMutationInFlight) {
+    travelPendingRefreshQueued = true;
+    return travelPendingMutationPromise || Promise.resolve();
+  }
+  if (travelPendingRefreshPromise) {
+    travelPendingRefreshQueued = true;
+    return travelPendingRefreshPromise;
+  }
+  const operation = (async () => {
+    let passes = 0;
+    do {
+      travelPendingRefreshQueued = false;
+      await refreshTravelPendingRecoveryOnce();
+      passes += 1;
+    } while (travelPendingRefreshQueued && !travelPendingMutationInFlight && passes < 2);
+    if (passes >= 2) travelPendingRefreshQueued = false;
+  })();
+  const tracked = operation.finally(() => {
+    if (travelPendingRefreshPromise === tracked) travelPendingRefreshPromise = null;
+  });
+  travelPendingRefreshPromise = tracked;
+  return tracked;
 }
 
 async function archiveTravelPending(mode) {
   const confirmed = mode === "unknown" ? els.travelPendingUnknownConfirm.checked : els.travelPendingHomeConfirm.checked;
   if (!confirmed || travelPendingChecking || travelPendingView?.inspection.raw == null) return;
+  travelPendingMutationInFlight = true;
   travelPendingChecking = true;
-  renderTravelPendingRecovery();
-  try {
-    const previous = travelPendingView.inspection.pending;
-    await travelAdapter.archivePending(travelPendingView.inspection.raw, { mode, confirmed });
-    if (mode === "home_recovered") {
-      if (previous?.session_id === state.travelSession?.travel_session_id) {
-        state.travelSession = null;
-        state.travelPersonaId = null;
+  let operation;
+  operation = (async () => {
+    try {
+      renderTravelPendingRecovery();
+      const previous = travelPendingView.inspection.pending;
+      await travelAdapter.archivePending(travelPendingView.inspection.raw, { mode, confirmed });
+      if (mode === "home_recovered") {
+        if (previous?.session_id === state.travelSession?.travel_session_id) {
+          state.travelSession = null;
+          state.travelPersonaId = null;
+        }
+        await refreshTravelReadiness();
+        setSyncStatus("記録を保管し、この端末の待機を解除しました。接続状態を確認してモードを選び直してください。", "ok");
+      } else {
+        setSyncStatus("結果不明の記録を保管しました。元の文章を再送せず、次の操作へ進めます。", "ok");
       }
-      await refreshTravelReadiness();
-      setSyncStatus("記録を保管し、この端末の待機を解除しました。接続状態を確認してモードを選び直してください。", "ok");
-    } else {
-      setSyncStatus("結果不明の記録を保管しました。元の文章を再送せず、次の操作へ進めます。", "ok");
+    } catch (error) {
+      setSyncStatus(error.message || "送信記録を保管できませんでした。元の記録は保持しています。", "warn");
+    } finally {
+      travelPendingChecking = false;
+      travelPendingMutationInFlight = false;
+      if (travelPendingMutationPromise === operation) travelPendingMutationPromise = null;
+      invalidateTravelPendingView();
+      await refreshTravelPendingRecovery();
     }
-  } catch (error) {
-    setSyncStatus(error.message || "送信記録を保管できませんでした。元の記録は保持しています。", "warn");
-  } finally {
-    travelPendingChecking = false;
-    await refreshTravelPendingRecovery();
-  }
+  })();
+  travelPendingMutationPromise = operation;
+  return operation;
 }
 
 function resetTravelContextAfterWorkerChange(previousBase) {
   if (previousBase === travelAdapter.configuredBase()) return;
+  invalidateTravelPendingView();
   state.travelContextRevision = (state.travelContextRevision || 0) + 1;
   state.travelSession = null;
   state.currentTravelSession = null;
@@ -2612,10 +2696,12 @@ async function downloadTravelPendingDiagnostic() {
   try { archive = travelAdapter.listPendingArchive(); } catch { archiveReadable = false; }
   const record = {
     format: "nexus-lite-pending-diagnostic-v1",
+    ui_build: LITE_UI_BUILD,
     archive_readable: archiveReadable,
     saved_at: new Date().toISOString(),
     request_created_at: Number.isFinite(Date.parse(pending.created_at)) ? new Date(pending.created_at).toISOString() : null,
     reserved_at: Number.isFinite(Date.parse(travelPendingView?.remote?.reserved_at)) ? new Date(travelPendingView.remote.reserved_at).toISOString() : null,
+    finalized_at: Number.isFinite(Date.parse(travelPendingView?.remote?.finalized_at)) ? new Date(travelPendingView.remote.finalized_at).toISOString() : null,
     last_checked_at: Number.isFinite(Date.parse(travelPendingView?.checkedAt)) ? new Date(travelPendingView.checkedAt).toISOString() : null,
     storage_state: inspection.state,
     worker_origin: origin,
@@ -2645,6 +2731,10 @@ async function downloadTravelPendingDiagnostic() {
 
 async function reconcileTravelPendingOnStartup() {
   await refreshTravelPendingRecovery();
+}
+
+function refreshTravelPendingOnResume() {
+  return refreshTravelPendingRecovery().catch(() => {});
 }
 
 function setExternalAiExportSource(source) {
@@ -2996,6 +3086,7 @@ async function returnTravelToHome() {
         ? "結果不明の送信記録が残っているため、帰宅は開始していません。チャットの「前回の送信を確認」で内容を確認し、「結果不明の記録を保管して続ける」を押してから帰宅してください。"
         : "送信結果がまだ確定していないため、帰宅は開始していません。チャットの「前回の送信を確認」から結果を再確認してください。");
     }
+    await refreshTravelPendingRecovery().catch(() => {});
     state.travelContextRevision = (state.travelContextRevision || 0) + 1;
     setTravelReturnStatus("帰宅処理中です。署名を確認して会話を本体へ取り込んでいます。完了表示までお待ちください…", "checking");
     await api("/api/v1/lite-travel/return", {
@@ -3059,6 +3150,7 @@ async function sendTravelMessage(message) {
     await refreshTravelPendingRecovery().catch(() => {});
     throw new Error("前回の独立モード送信結果が未確定です。「前回の送信を確認」欄で状態を確認してください。");
   }
+  await refreshTravelPendingRecovery().catch(() => {});
   const userMessage = appendMessage("user", message);
   const pending = appendMessage("pending", "考えています...");
   let result;
@@ -3077,6 +3169,7 @@ async function sendTravelMessage(message) {
   if (result.terminal === "response.committed") {
     travelAdapter.saveDraft("");
     els.messageInput.value = "";
+    await refreshTravelPendingRecovery().catch(() => {});
     await loadTravelUsage();
   } else {
     await refreshTravelPendingRecovery().catch(() => {});
@@ -6605,6 +6698,7 @@ document.addEventListener("visibilitychange", () => {
     markPendingResponseNotificationWanted();
   }
   if (!document.hidden) {
+    refreshTravelPendingOnResume();
     if (state.mode === "travel") {
       if (state.connected && state.roomId) syncNow().catch((error) => setSyncStatus(error.message, "warn"));
     } else {
@@ -6664,6 +6758,8 @@ window.addEventListener("storage", (event) => {
     els.travelPendingHomeConfirm.checked = false;
     if (event.key === travelAdapter.keys.base || event.key === null) {
       resetTravelContextAfterWorkerChange(event.oldValue);
+    } else {
+      invalidateTravelPendingView();
     }
     refreshTravelPendingRecovery().catch(() => {});
   }
