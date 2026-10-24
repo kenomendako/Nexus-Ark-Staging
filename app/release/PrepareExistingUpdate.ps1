@@ -245,6 +245,8 @@ function Get-PackageSource {
     $release = Assert-RegularDirectory (Join-Path $app 'release') '配布パッケージの app/release'
     $start = (Assert-RegularFile (Join-Path $root 'Start.bat') '配布パッケージの Start.bat').FullName
     $repair = (Assert-RegularFile (Join-Path $release 'RepairUpdateCertificates.ps1') '配布パッケージの修復スクリプト').FullName
+    $secureLauncher = (Assert-RegularFile (Join-Path $release 'RefreshSecureLauncher.ps1') '配布パッケージの起動設定準備スクリプト').FullName
+    Assert-RegularFile (Join-Path $release 'EnsureSecurePython.ps1') '配布パッケージのPython準備スクリプト' | Out-Null
     Assert-RegularFile (Join-Path $release 'PrepareExistingUpdate.ps1') '配布パッケージの準備スクリプト' | Out-Null
     Assert-RegularFile (Join-Path $app 'release_manifest.json') '配布パッケージの release_manifest.json' | Out-Null
     $version = Read-VersionValue (Join-Path $app 'version.json') '配布パッケージの app/version.json'
@@ -266,6 +268,7 @@ function Get-PackageSource {
         Release = $release
         Start = $start
         Repair = $repair
+        SecureLauncher = $secureLauncher
         Version = $version
     }
 }
@@ -569,6 +572,30 @@ function Invoke-UvRepair {
     return $uv
 }
 
+function Invoke-SecureLauncherRefresh {
+    param([hashtable]$Source, [hashtable]$Target)
+    $arguments = @(
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', (ConvertTo-WindowsArgument $Source.SecureLauncher),
+        '-TargetRoot', (ConvertTo-WindowsArgument $Target.Root),
+        '-TemplatePath', (ConvertTo-WindowsArgument $Source.Start)
+    ) -join ' '
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = Join-Path $PSHOME 'powershell.exe'
+    $psi.Arguments = $arguments
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $process = [Diagnostics.Process]::Start($psi)
+    if ($null -eq $process) { throw '起動設定の準備プロセスを開始できません。' }
+    try {
+        Wait-PreparationProcess -Process $process
+        if ($process.ExitCode -ne 0) {
+            throw '起動設定の安全な更新を確認できません。既存フォルダーとbackupを残して、表示内容をお知らせください。'
+        }
+    }
+    finally { $process.Dispose() }
+}
+
 function Start-SelectedRoot {
     param(
         [Parameter(Mandatory = $true)][hashtable]$Target,
@@ -634,8 +661,10 @@ function Invoke-PreparedTarget {
             Set-PreparationStatus -Text '準備を中止しました。Nexus Arkは起動していません。'
             return $false
         }
-        Set-PreparationStatus -Text '更新用ツールを確認・準備しています。取得が必要な場合は数分かかることがあります。'
+        Set-PreparationStatus -Text '更新用ツールと修正済みPythonを確認・準備しています。取得が必要な場合は数分かかることがあります。'
         Invoke-UvRepair $Source | Out-Null
+        Set-PreparationStatus -Text '修正済みPythonで起動するため、停止中の起動設定を確認しています…'
+        Invoke-SecureLauncherRefresh -Source $Source -Target $target
         # The user may have started the old application while the repair was
         # running.  Recheck both process and lock state immediately before
         # handing control to cmd.exe.

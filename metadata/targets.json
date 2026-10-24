@@ -2,12 +2,12 @@
  "signatures": [
   {
    "keyid": "eb0c396d6f011da52a28cd5366f90b087f6afc1c758c7e493201c8ffc43a60d4",
-   "sig": "dca0dc38c5a0995ef9cf2d9768d52dee650f51dd64dcd556a1e607c10bdbdfd80b88f4b7b3943c52b975decde08addc5c56545a1b08eac2e208247717327900d"
+   "sig": "89b931649846f12058fa6b6c7454c491fc3087997f0bba9aa6dbf7d15067e05401461a629783a8047186f47d5802093d4878ae3d624faae2b66b3fc91e266b09"
   }
  ],
  "signed": {
   "_type": "targets",
-  "expires": "2027-10-24T04:48:03Z",
+  "expires": "2027-10-24T23:06:05Z",
   "spec_version": "1.0.31",
   "targets": {
    "Nexus-Ark-0.2.4.2.tar.gz": {
@@ -1159,6 +1159,18 @@
     },
     "length": 14114747
    },
+   "Nexus-Ark-0.5.0.70.tar.gz": {
+    "custom": {
+     "tufup": {
+      "required": false
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "6f93a018db973faa4c987e6cada416e4b63ec224a46c6b5aec52e0e5c0c3acf8"
+    },
+    "length": 17905960
+   },
    "Nexus-Ark-0.5.0.8.tar.gz": {
     "custom": {
      "tufup": {
@@ -1184,6 +1196,6 @@
     "length": 14115222
    }
   },
-  "version": 148
+  "version": 149
  }
 }

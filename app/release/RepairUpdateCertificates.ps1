@@ -34,6 +34,19 @@ function Assert-RegularPath([string]$Path) {
     }
 }
 
+function Complete-PythonPreparation([string]$UvExecutable) {
+    # CheckOnly remains a local check of the downloader itself.
+    if ($CheckOnly) { return }
+    $helper = Join-Path $PSScriptRoot 'EnsureSecurePython.ps1'
+    Assert-RegularPath $helper
+    if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+        throw 'The secure Python preparation tool is missing. Use the complete new ZIP.'
+    }
+    $powershell = Join-Path $PSHOME 'powershell.exe'
+    & $powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $helper -UvExecutable $UvExecutable
+    if ($LASTEXITCODE -ne 0) { throw 'Secure Python preparation failed. The application has not been started.' }
+}
+
 function Read-UvVersion([string]$Executable) {
     if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $null }
     Assert-RegularPath $Executable
@@ -54,6 +67,7 @@ try {
     $version = Read-UvVersion $Executable
     if ($null -ne $version -and $version -ge $MinimumVersion) {
         Write-Host "[Nexus Ark] Download tool ready: uv $version ($Executable)"
+        Complete-PythonPreparation $Executable
         exit 0
     }
     if ($CheckOnly) { throw 'uv 0.13.4 or newer is required before downloading dependencies.' }
@@ -111,6 +125,10 @@ try {
     if ($null -eq $version -or $version -lt $MinimumVersion) { throw 'Installed update tool could not be verified.' }
     Write-Host "[Nexus Ark] Download tool repaired: uv $version ($Executable)"
     Write-Host "[Nexus Ark] Previous tools preserved: $BackupDirectory"
+    # Downloader replacement is complete. A later Python failure must not roll
+    # the fixed downloader back to an unsafe version.
+    $Changed = @()
+    Complete-PythonPreparation $Executable
 } catch {
     $failure = $_.Exception.Message
     foreach ($change in $Changed) {

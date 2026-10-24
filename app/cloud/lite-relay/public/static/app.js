@@ -1,6 +1,6 @@
-import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=112";
-import { parsePairingHandoff } from "./pairing-handoff.js?v=112";
-import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=112";
+import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=113";
+import { parsePairingHandoff } from "./pairing-handoff.js?v=113";
+import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=113";
 import {
   LITE_UPDATE_RESUME_THROTTLE_MS,
   LITE_UPDATE_TIMEOUT_MS,
@@ -10,9 +10,9 @@ import {
   liteBuildMetadataUrl,
   liteServiceWorkerPaths,
   liteUpdateBlockers,
-} from "./lite-update-state.js?v=112";
+} from "./lite-update-state.js?v=113";
 
-const LITE_UI_BUILD = "v112";
+const LITE_UI_BUILD = "v113";
 
 function isCloudHostedLite() {
   return true;
@@ -1941,6 +1941,37 @@ function renderTravelSendFailure() {
   els.travelSendFailureDetail.textContent = failure
     ? `${failure.message}（確認コード: ${failure.code}${failure.httpStatus ? ` / HTTP ${failure.httpStatus}` : ""}）`
     : "";
+  renderTravelFailedMessage();
+}
+
+function renderTravelFailedMessage() {
+  const failed = state.mode === "travel"
+    ? travelAdapter.failedMessage(state.travelSession, state.travelPersonaId) : null;
+  if (failed) {
+    // 履歴取得に失敗して仮表示が残っていても、同じ送信を二重に見せない。
+    els.messages.querySelectorAll(".message.user[data-travel-client-message-id]").forEach((item) => {
+      if (item.dataset.travelClientMessageId === failed.clientMessageId) item.remove();
+    });
+  }
+  const previous = els.messages.querySelector(".travel-failed-send");
+  if (failed && previous?.dataset.clientMessageId === failed.clientMessageId) return;
+  const scrollTop = els.messages.scrollTop;
+  const follow = isNearMessageBottom();
+  previous?.remove();
+  if (!failed) return;
+  const item = appendMessage("user", failed.message, { timestamp: failed.createdAt });
+  item.classList.add("travel-failed-send");
+  item.dataset.clientMessageId = failed.clientMessageId;
+  const label = document.createElement("strong");
+  label.className = "travel-failed-send-label";
+  label.textContent = "送信に失敗しました（会話として未保存）";
+  item.prepend(label);
+  const note = document.createElement("div");
+  note.className = "travel-failed-send-note";
+  note.textContent = "この端末にだけ表示しています。自動再送しません。";
+  item.appendChild(note);
+  if (follow) scrollMessagesToBottom();
+  else els.messages.scrollTop = scrollTop;
 }
 
 function travelPersonas() {
@@ -3151,7 +3182,8 @@ async function sendTravelMessage(message) {
     throw new Error("前回の独立モード送信結果が未確定です。「前回の送信を確認」欄で状態を確認してください。");
   }
   await refreshTravelPendingRecovery().catch(() => {});
-  const userMessage = appendMessage("user", message);
+  setSyncStatus("送信中です。AIの応答を待っています…");
+  const userMessage = appendMessage("user", message, { travelClientMessageId: clientMessageId });
   const pending = appendMessage("pending", "考えています...");
   let result;
   try {
@@ -3873,6 +3905,9 @@ function appendMessage(role, text, metadata = {}) {
   const shouldFollow = isNearMessageBottom() || role === "user" || role === "pending";
   const item = document.createElement("div");
   item.className = `message ${role}`;
+  if (typeof metadata.travelClientMessageId === "string") {
+    item.dataset.travelClientMessageId = metadata.travelClientMessageId;
+  }
   if (role === "agent" && state.mode === "home") {
     appendThoughtDetails(item, metadata.thoughts);
   }
@@ -3984,6 +4019,7 @@ function renderChatMessages() {
   messages.forEach((message, index) => {
     appendHistoryMessage(message, index === lastAgentIndex);
   });
+  renderTravelFailedMessage();
   scrollMessagesToBottom();
 }
 
@@ -5252,6 +5288,7 @@ async function sendMessage(event) {
     ) return;
     state.sending = true;
     setTravelRouteControls();
+    setSyncStatus("送信を準備しています…");
     try {
       await sendTravelMessage(message);
       setSyncStatus("独立モードの応答を受信しました。本体へ自動切替しません。");

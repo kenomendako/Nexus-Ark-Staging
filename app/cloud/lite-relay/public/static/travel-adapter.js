@@ -52,6 +52,7 @@ const KEYS = {
   pending: "nexusLite.travel.pendingMessage",
   pendingArchive: "nexusLite.travel.pendingArchive",
   lastSendFailure: "nexusLite.travel.lastSendFailure",
+  lastFailedMessage: "nexusLite.travel.lastFailedMessage",
 };
 const SUPPORTED_API_SCHEMA_VERSION = 10;
 const REQUIRED_D1_SCHEMA_VERSION = 10;
@@ -143,6 +144,50 @@ function lastSendFailure(session, personaId) {
     return sendFailure(failure.code, failure.http_status);
   } catch {
     return null;
+  }
+}
+
+// 正常な会話や診断とは分け、照合済みの失敗本文をこの端末だけに保持する。
+function failedMessage(session, personaId) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEYS.lastFailedMessage) || "null");
+    if (!saved || saved.status !== "failed_known" || saved.worker_url !== base()
+      || !session?.travel_session_id || !personaId
+      || saved.session_id !== session.travel_session_id || saved.persona_id !== personaId
+      || typeof saved.client_message_id !== "string" || !saved.client_message_id
+      || typeof saved.message !== "string" || !saved.message.trim()) return null;
+    const failure = sendFailure(saved.code, saved.http_status);
+    return {
+      clientMessageId: saved.client_message_id, message: saved.message,
+      createdAt: typeof saved.created_at === "string" ? saved.created_at : "",
+      code: failure.code, httpStatus: failure.httpStatus,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function rememberFailedMessage(pending) {
+  if (typeof pending.message !== "string" || !pending.message.trim()) return;
+  let failure = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEYS.lastSendFailure) || "null");
+    if (saved?.worker_url === pending.worker_url && saved.session_id === pending.session_id
+      && saved.persona_id === pending.persona_id && saved.client_message_id === pending.client_message_id) {
+      failure = sendFailure(saved.code, saved.http_status);
+    }
+  } catch { /* 本文は保持し、理由を復元できない時は一般的な分類を使う。 */ }
+  const record = {
+    status: "failed_known", worker_url: pending.worker_url || base(),
+    session_id: pending.session_id, persona_id: pending.persona_id,
+    client_message_id: pending.client_message_id, message: pending.message,
+    created_at: pending.created_at || "", code: failure?.code || "travel_send_failed",
+    http_status: failure?.httpStatus || 0,
+  };
+  try {
+    localStorage.setItem(KEYS.lastFailedMessage, JSON.stringify(record));
+  } catch {
+    throw new TravelAdapterError("失敗した送信文を端末に保存できません。元の送信記録は保持しています。端末の空き容量を確認してください。", "failed_message_save_failed");
   }
 }
 
@@ -267,6 +312,9 @@ async function pendingStatusInternal() {
   assertConnection(context);
   assertPendingRaw(inspected.raw);
   if (FINAL_PENDING_STATUSES.has(body.status)) {
+    if (body.status === "failed_known") rememberFailedMessage(inspected.pending);
+    assertConnection(context);
+    assertPendingRaw(inspected.raw);
     localStorage.removeItem(KEYS.pending);
     return null;
   }
@@ -491,6 +539,7 @@ export const travelAdapter = {
   inspectPending: inspectPendingMessage,
   listPendingArchive,
   lastSendFailure,
+  failedMessage,
   archivePending: (raw, options) => withPendingGuard(() => archivePendingInternal(raw, options)),
   paired: () => Boolean(accessToken()),
   connectionKey,
@@ -743,6 +792,7 @@ export const travelAdapter = {
       if (result.terminal === "response.committed") {
         localStorage.removeItem(KEYS.pending);
         if (lastSendFailure(session, personaId)) localStorage.removeItem(KEYS.lastSendFailure);
+        if (failedMessage(session, personaId)) localStorage.removeItem(KEYS.lastFailedMessage);
       } else if (result.error) {
         rememberSendFailure(pending, result.error);
       }

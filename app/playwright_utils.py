@@ -37,6 +37,8 @@ def ensure_playwright_browsers(browser_type: str = "chromium") -> bool:
         node = prepare_playwright_node()
         env = os.environ.copy()
         env["PLAYWRIGHT_NODEJS_PATH"] = node
+        # 旧世代へ戻した時のブラウザを残し、新版の取得で自動削除しない。
+        env["PLAYWRIGHT_SKIP_BROWSER_GC"] = "1"
         # まずはインストールを試行（Playwright側で既存チェックが行われるため、
         # 明示的な存在チェックより install コマンドを呼ぶ方が確実）
         logger.info(f"Playwrightのブラウザ ({browser_type}) を確認/インストール中...")

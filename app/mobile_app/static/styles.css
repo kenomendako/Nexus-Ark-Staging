@@ -1161,6 +1161,22 @@ meter {
   color: var(--bg);
 }
 
+.message.user.travel-failed-send {
+  background: var(--field);
+  color: var(--ink);
+  border: 1px dashed var(--primary);
+}
+
+.travel-failed-send-label,
+.travel-failed-send-note {
+  display: block;
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.travel-failed-send-label { margin-bottom: 6px; }
+.travel-failed-send-note { margin-top: 6px; color: var(--muted); }
+
 .message.agent {
   align-self: flex-start;
   background: var(--soft);
