@@ -482,30 +482,40 @@ class UpdateSupervisor:
         except OSError as exc:
             raise SupervisorError("古いtrial markerを安全に交換できません") from exc
 
-    def _terminate(self, process: Any) -> None:
+    def _terminate(self, process: Any) -> bool:
         try:
             running = process.poll() is None
         except AttributeError:
             running = True
         if not running:
-            return
+            return True
+        if os.name == "nt" and isinstance(process, subprocess.Popen):
+            # Windows venvのPopen PIDはlauncher shimの場合がある。shimだけを
+            # 終了すると実Pythonが残る。作成時刻と保持handleで所有を検証する。
+            try:
+                from .windows_processes import terminate_owned_process_tree
+
+                return terminate_owned_process_tree(process, self.rollback_timeout_seconds)
+            except (ImportError, OSError, ValueError):
+                return False
         try:
             process.terminate()
         except (AttributeError, OSError):
-            return
+            return False
         try:
             process.wait(timeout=self.rollback_timeout_seconds)
-            return
+            return True
         except (AttributeError, OSError, subprocess.TimeoutExpired):
             pass
         try:
             process.kill()
         except (AttributeError, OSError):
-            pass
+            return False
         try:
             process.wait(timeout=self.rollback_timeout_seconds)
+            return True
         except (AttributeError, OSError, subprocess.TimeoutExpired):
-            pass
+            return False
 
     def _trial_and_commit(self, journal: dict[str, Any], *, app_dir: Path) -> Any:
         marker = self.paths.trial_marker
@@ -584,14 +594,25 @@ class UpdateSupervisor:
                 except Exception as exc:
                     marker_error = exc
                     break
-                commit_transaction(self.layout, journal)
+                try:
+                    commit_transaction(self.layout, journal)
+                except Exception as exc:
+                    # commit記録を確定できないtrialを残して、別processを起動しない。
+                    self._terminate(process)
+                    raise UnsafeGenerationError(
+                        "新版の起動確認後に更新記録を確定できません。新版の停止を試みました。"
+                        "重ねて起動せず、update_recoveryと各世代を保持して復旧案内を確認してください"
+                    ) from exc
                 self._cleanup_committed_staging()
                 return process
             self._sleep(self.poll_interval_seconds)
 
         if marker_error is None:
             marker_error = SupervisorError("新版trialのhealth markerがtimeoutしました")
-        self._terminate(process)
+        if not self._terminate(process):
+            raise UnsafeGenerationError(
+                "新版trialの停止を確認できません。世代を保持し、重ねて起動せず復旧案内を確認してください"
+            ) from marker_error
         try:
             rollback_transaction(self.layout, journal)
         except Exception as rollback_error:
@@ -638,8 +659,15 @@ class UpdateSupervisor:
             except SupervisorError as journal_error:
                 print(f"[Nexus Ark] 更新状態の再確認にも失敗しました: {journal_error}", file=sys.stderr)
                 return 1
-            if failed_journal and failed_journal.get("phase") == UpdatePhase.MANUAL_RECOVERY_REQUIRED.value:
-                print("[Nexus Ark] 自動復旧を停止しました。最新完全ZIPからの再導入を案内してください。", file=sys.stderr)
+            if failed_journal and failed_journal.get("phase") not in {
+                UpdatePhase.PREPARING.value,
+                UpdatePhase.PREPARED.value,
+                UpdatePhase.COMMITTED.value,
+                UpdatePhase.ROLLED_BACK.value,
+            }:
+                # journal保存失敗はrollbackの開始前にも起きる。appとvenvの
+                # 存在だけでは同一世代の復旧を証明できない。
+                print("[Nexus Ark] 更新世代の復旧を確認できないため起動を停止しました。update_recoveryと各世代を保持して復旧案内を確認してください。", file=sys.stderr)
                 return 1
             if not self.paths.app.is_dir() or not self._python_env_exists():
                 return 1

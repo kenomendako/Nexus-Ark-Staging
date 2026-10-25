@@ -1,11 +1,11 @@
 ﻿<#
 Nexus Ark: prepare an existing Windows installation for the normal updater.
 
-This small GUI is intentionally only a preflight and launcher.  It does not
-copy an application, migrate an updater, change update_url, or create a
-backup.  The user selects an already extracted installation, confirms that it
-is stopped and backed up, and then this package repairs uv before starting the
-selected installation's own Start.bat.
+This GUI does not copy the application or change update_url.  After the user
+confirms shutdown and a whole-installation backup, it prepares uv/Python and
+repairs only a recognized stable host and launcher.  The dedicated host helper
+keeps verified backups and supports resuming an interrupted host exchange.
+Only a fully verified installation is started through its own Start.bat.
 
 The script is normally run from app/release in a complete package.  Internal
 parameters on the functions below exist for isolated tests after dot-sourcing;
@@ -246,6 +246,8 @@ function Get-PackageSource {
     $start = (Assert-RegularFile (Join-Path $root 'Start.bat') '配布パッケージの Start.bat').FullName
     $repair = (Assert-RegularFile (Join-Path $release 'RepairUpdateCertificates.ps1') '配布パッケージの修復スクリプト').FullName
     $secureLauncher = (Assert-RegularFile (Join-Path $release 'RefreshSecureLauncher.ps1') '配布パッケージの起動設定準備スクリプト').FullName
+    $secureHost = (Assert-RegularFile (Join-Path $release 'RepairSecureUpdateHost.ps1') '配布パッケージの更新host準備スクリプト').FullName
+    Assert-RegularFile (Join-Path $release 'SecureLauncherMaintenance.ps1') '配布パッケージの起動設定復旧スクリプト' | Out-Null
     Assert-RegularFile (Join-Path $release 'EnsureSecurePython.ps1') '配布パッケージのPython準備スクリプト' | Out-Null
     Assert-RegularFile (Join-Path $release 'PrepareExistingUpdate.ps1') '配布パッケージの準備スクリプト' | Out-Null
     Assert-RegularFile (Join-Path $app 'release_manifest.json') '配布パッケージの release_manifest.json' | Out-Null
@@ -269,6 +271,8 @@ function Get-PackageSource {
         Start = $start
         Repair = $repair
         SecureLauncher = $secureLauncher
+        SecureHost = $secureHost
+        SourceHost = (Split-Path -Parent $hostDirectory)
         Version = $version
     }
 }
@@ -369,7 +373,10 @@ function Assert-TargetProcessesStopped {
 }
 
 function Assert-TargetRoot {
-    param([Parameter(Mandatory = $true)][string]$Root)
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [hashtable]$Source = $null
+    )
 
     $root = Assert-RegularDirectory $Root '選択したNexus Arkのルート'
     $app = Assert-RegularDirectory (Join-Path $root 'app') '選択したルートの app'
@@ -394,8 +401,16 @@ function Assert-TargetRoot {
             throw '保護hostがあるのに旧式のStart.batです。部分更新を推測せず停止します。'
         }
     }
-    elseif ($hasModernHost) {
+    elseif ($hasModernHost -and $null -eq $Source) {
         throw '新版Start.batに必要な保護hostがありません。完全な配布物を確認してください。'
+    }
+    # Inspect without writing before asking for backup confirmation or repairing
+    # uv. Only the dedicated receipt protocol can justify a missing current.
+    if ($null -ne $Source) {
+        $hostState = Invoke-SecureHostMaintenance -Source $Source -TargetRoot $root -InspectOnly
+        if ($hasModernHost -and -not (Test-SafePathOrAbsent $current) -and $hostState.state -ne 'repair_pending') {
+            throw '更新hostの中断状態を検証できないため停止します。'
+        }
     }
 
     foreach ($optional in @(
@@ -489,8 +504,9 @@ function Confirm-BackupAndShutdown {
 選択したNexus Arkを完全に終了し、起動中の更新処理がないことを確認してください。
 また、選択したフォルダー全体のバックアップを別の場所へ取得済みであることを確認してください。
 
-「はい」を押すと、公式ハッシュ固定のuv修復後に選択したフォルダーのStart.batを起動します。
-このツールはバックアップを自動作成せず、既存フォルダーのファイルも書き換えません。
+「はい」を押すと、更新用ツールとPythonを確認・準備し、既知の更新プログラムと起動設定を照合して、必要な場合はバックアップを残して更新します。
+完了後、今までのフォルダーのStart.batから起動します。
+このツールはフォルダー全体のバックアップを自動作成しません。会話や個人設定を手作業で移す必要はありません。
 "@
     $result = Show-PreparationMessage -Text $message -Kind Warning -Buttons YesNo
     return ($result -eq [System.Windows.Forms.DialogResult]::Yes)
@@ -570,6 +586,52 @@ function Invoke-UvRepair {
         throw '修復後のlocalbin/uv.exeを検証できません。'
     }
     return $uv
+}
+
+function Invoke-SecureHostMaintenance {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Source,
+        [Parameter(Mandatory = $true)][string]$TargetRoot,
+        [switch]$InspectOnly
+    )
+    $arguments = @(
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+        '-File', (ConvertTo-WindowsArgument $Source.SecureHost),
+        '-TargetRoot', (ConvertTo-WindowsArgument $TargetRoot),
+        '-SourceHostPath', (ConvertTo-WindowsArgument $Source.SourceHost)
+    )
+    if ($InspectOnly) { $arguments += '-InspectOnly' }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = Join-Path $PSHOME 'powershell.exe'
+    $psi.Arguments = $arguments -join ' '
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
+    $psi.StandardErrorEncoding = New-Object Text.UTF8Encoding($false)
+    $process = [Diagnostics.Process]::Start($psi)
+    if ($null -eq $process) { throw '更新hostの安全確認プロセスを開始できません。' }
+    try {
+        # Drain both pipes while pumping the preparation progress window.
+        $outputTask = $process.StandardOutput.ReadToEndAsync()
+        $errorTask = $process.StandardError.ReadToEndAsync()
+        Wait-PreparationProcess -Process $process
+        $outputText = $outputTask.GetAwaiter().GetResult()
+        $errorText = $errorTask.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) {
+            throw ('更新hostの安全な準備を確認できません。起動せず、既存フォルダーとbackupを残してください。' + "`r`n" + $errorText)
+        }
+        $result = $outputText | ConvertFrom-Json
+        if ([string]$result.state -notin @('legacy', 'known_old', 'known_new', 'repair_pending')) {
+            throw '更新host準備の結果を検証できません。'
+        }
+        if (-not $InspectOnly -and [string]$result.state -notin @('legacy', 'known_new')) {
+            throw '更新hostの交換が完了していないため起動しません。'
+        }
+        return $result
+    }
+    finally { $process.Dispose() }
 }
 
 function Invoke-SecureLauncherRefresh {
@@ -655,7 +717,7 @@ function Invoke-PreparedTarget {
     $mutex = Enter-PreparationMutex $TargetRoot
     try {
         Set-PreparationStatus -Text '選択したフォルダーと、Nexus Arkが終了していることを確認しています…'
-        $target = Assert-TargetRoot $TargetRoot
+        $target = Assert-TargetRoot -Root $TargetRoot -Source $Source
         Set-PreparationStatus -Text '停止とバックアップの確認画面で、内容をご確認ください。'
         if (-not (Confirm-BackupAndShutdown -TargetRoot $target.Root)) {
             Set-PreparationStatus -Text '準備を中止しました。Nexus Arkは起動していません。'
@@ -663,6 +725,8 @@ function Invoke-PreparedTarget {
         }
         Set-PreparationStatus -Text '更新用ツールと修正済みPythonを確認・準備しています。取得が必要な場合は数分かかることがあります。'
         Invoke-UvRepair $Source | Out-Null
+        Set-PreparationStatus -Text '更新host全体を照合し、必要な場合はバックアップを残して安全に更新しています…'
+        Invoke-SecureHostMaintenance -Source $Source -TargetRoot $target.Root | Out-Null
         Set-PreparationStatus -Text '修正済みPythonで起動するため、停止中の起動設定を確認しています…'
         Invoke-SecureLauncherRefresh -Source $Source -Target $target
         # The user may have started the old application while the repair was

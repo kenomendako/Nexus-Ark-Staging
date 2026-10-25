@@ -28,6 +28,10 @@ from .runtime import validate_bound_runtime
 JOURNAL_SCHEMA_VERSION = 1
 DEFAULT_RESERVE_BYTES = 256 * 1024 * 1024
 _SAFE_IDENTIFIER = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$")
+# Windowsではdelete shareなしの読取handleでもreplaceが拒否される。
+# ACCESS_DENIED(5)だけではACL拒否との識別ができないため、合計1.55秒で打ち切る。
+_JOURNAL_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8)
+_JOURNAL_REPLACE_RETRY_WINERRORS = frozenset({5, 32, 33})
 
 
 class UpdatePhase(StrEnum):
@@ -305,7 +309,18 @@ class JournalStore:
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp, self.path)
+        for attempt in range(len(_JOURNAL_REPLACE_RETRY_DELAYS) + 1):
+            try:
+                os.replace(temp, self.path)
+                return
+            except OSError as exc:
+                if (
+                    getattr(exc, "winerror", None) not in _JOURNAL_REPLACE_RETRY_WINERRORS
+                    or attempt == len(_JOURNAL_REPLACE_RETRY_DELAYS)
+                ):
+                    # 元journalとfsync済みtmpを残し、既存の失敗・復旧経路へ戻す。
+                    raise
+                time.sleep(_JOURNAL_REPLACE_RETRY_DELAYS[attempt])
 
 
 class UpdateLock:

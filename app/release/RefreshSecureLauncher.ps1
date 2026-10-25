@@ -1,6 +1,10 @@
 ﻿<#
 Nexus Ark: refresh an already protected installation's Start.bat.
 
+Internal helper: the supported user entry is PrepareSecureUpdate.bat, whose
+preflight checks the complete host/update state before invoking this file.
+This file is not a standalone recovery procedure for an interrupted app update.
+
 This helper is deliberately narrower than the normal updater.  It only
 replaces a known, canonical protected launcher after the selected root is
 stopped.  The stable updater/current host and every application/runtime file
@@ -15,6 +19,7 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'SecureLauncherMaintenance.ps1')
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 
 # The old protected launcher is the canonical file shipped at HEAD
@@ -49,7 +54,8 @@ function Get-NormalizedPath {
 function Assert-NoReparseAncestors {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$Label
+        [Parameter(Mandatory = $true)][string]$Label,
+        [switch]$AllowMissing
     )
 
     $cursor = Get-NormalizedPath $Path
@@ -58,9 +64,10 @@ function Assert-NoReparseAncestors {
             $item = Get-Item -LiteralPath $cursor -Force -ErrorAction Stop
         }
         catch {
-            throw ('{0} の親を確認できません: {1}' -f $Label, $cursor)
+            if (-not $AllowMissing) { throw ('{0} の親を確認できません: {1}' -f $Label, $cursor) }
+            $item = $null
         }
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        if ($null -ne $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
             throw ('{0} にリンクまたは再解析ポイントが含まれるため停止します: {1}' -f $Label, $cursor)
         }
         $parent = [IO.Path]::GetDirectoryName($cursor)
@@ -165,12 +172,12 @@ function Assert-CanonicalTemplate {
 function Assert-NoUpdateBlockers {
     param([Parameter(Mandatory = $true)][string]$Root, [switch]$OwnRefreshLock)
 
+    Assert-NexusLauncherMaintenance -Root $Root -KnownStartHashes @($KnownOldStartSha256 + $KnownNewStartSha256) -OwnLease:$OwnRefreshLock
     # Any of these paths means another update or a prior partial launcher
     # operation may still own the tree.  Do not infer that it is stale.
     foreach ($relative in @(
         'update_recovery\transaction.lock',
         'update_recovery\bridge.lock',
-        'update_recovery\secure-launcher-refresh.lock',
         'updater.next',
         'app.next',
         '.venv.next',
@@ -274,10 +281,11 @@ function Open-RefreshLock {
     }
     Assert-RegularDirectory -Path $recovery -Label 'update_recovery' | Out-Null
     $lockPath = Join-Path $recovery 'secure-launcher-refresh.lock'
+    Assert-NoReparseAncestors -Path $lockPath -Label 'launcher maintenance lease' -AllowMissing
     try {
         return [IO.File]::Open(
             $lockPath,
-            [IO.FileMode]::CreateNew,
+            [IO.FileMode]::OpenOrCreate,
             [IO.FileAccess]::ReadWrite,
             [IO.FileShare]::None
         )
@@ -285,6 +293,11 @@ function Open-RefreshLock {
     catch {
         throw '同じStart.batのrefresh、または未解決のlockが実行中です。'
     }
+}
+
+function Invoke-NexusLauncherReplace {
+    param([string]$Temporary, [string]$Current, [string]$Previous)
+    [IO.File]::Replace($Temporary, $Current, $Previous, $true)
 }
 
 function Invoke-Refresh {
@@ -385,7 +398,7 @@ function Invoke-Refresh {
 
         # File.Replace is intentionally used without a fallback copy/move:
         # on failure the old Start.bat and the verified backup remain intact.
-        [IO.File]::Replace($temporaryStart, $startPath, (Join-Path $backupDirectory 'Start.bat.replaced'), $true)
+        Invoke-NexusLauncherReplace -Temporary $temporaryStart -Current $startPath -Previous (Join-Path $backupDirectory 'Start.bat.replaced')
         $temporaryStart = $null
         if ((Get-Sha256 $startPath) -ne $templateSha) {
             throw '差替え後のStart.batを検証できません。backupを保持しています。'
@@ -395,24 +408,20 @@ function Invoke-Refresh {
         Write-Host ('[Nexus Ark] protected Start.batを更新しました。backup: {0}' -f $backupDirectory)
     }
     finally {
-        if ($null -ne $temporaryStart -and (Test-Path -LiteralPath $temporaryStart)) {
-            Remove-Item -LiteralPath $temporaryStart -Force -ErrorAction SilentlyContinue
-        }
+        # Keep failed temporary bytes and their verified backup as evidence.
         if ($null -ne $lockStream) {
             $lockStream.Dispose()
-            $lockPath = Join-Path $rootPath 'update_recovery\secure-launcher-refresh.lock'
-            if (Test-Path -LiteralPath $lockPath) {
-                Remove-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue
-            }
         }
     }
 }
 
-try {
-    Invoke-Refresh -Root $TargetRoot -Template $TemplatePath
-    exit 0
-}
-catch {
-    Write-Error $_.Exception.Message
-    exit 1
+if ($MyInvocation.InvocationName -ne '.') {
+    try {
+        Invoke-Refresh -Root $TargetRoot -Template $TemplatePath
+        exit 0
+    }
+    catch {
+        Write-Error $_.Exception.Message
+        exit 1
+    }
 }
