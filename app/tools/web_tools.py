@@ -3,11 +3,15 @@
 from langchain_core.tools import tool
 import google.genai as genai
 from google.genai import types
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 import traceback
 import time
 import config_manager
 import constants
-from ddgs import DDGS
 
 # Tavilyのインポート（インストールされていない場合のフォールバック対応）
 try:
@@ -159,32 +163,109 @@ def _search_with_tavily(query: str) -> str:
         return f"[エラー: Tavily検索中に問題が発生しました。詳細: {e}]"
 
 
-def _search_with_ddg(query: str) -> str:
-    """DuckDuckGoを使用して検索を実行する内部関数"""
+_DDG_WORKER_TIMEOUT_SECONDS = 35
+_DDG_WORKER_MAX_RESULTS = 5
+_DDG_ENV_ALLOWLIST = (
+    "PATH",
+    "PATHEXT",
+    "SYSTEMDRIVE",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+)
+
+
+def _ddg_worker_environment() -> dict[str, str]:
+    """Return a minimal child environment without ambient trust overrides."""
+
+    environment = {
+        key: value
+        for key in _DDG_ENV_ALLOWLIST
+        if (value := os.environ.get(key))
+    }
+    # Ensure child stdout is predictable on both Windows and Linux.
+    environment["PYTHONIOENCODING"] = "utf-8"
+    return environment
+
+
+def _run_ddg_worker(query: str, *, max_results: int = _DDG_WORKER_MAX_RESULTS) -> tuple[str, list[dict[str, str]]]:
+    """Run DDGS in an isolated process and return ``(status, results)``."""
+
+    worker = Path(__file__).with_name("ddg_search_worker.py")
+    request = {
+        "query": query,
+        "max_results": max_results,
+        # This is an explicit DDGS setting, passed through stdin rather than
+        # command arguments.  Other proxy and CA variables are dropped.
+        "proxy": os.environ.get("DDGS_PROXY"),
+    }
+    command = [sys.executable, "-I", "-X", "utf8", str(worker)]
+    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        results = DDGS().text(query, max_results=5)
-        if not results:
-            return "[情報: DuckDuckGo検索で結果が見つかりませんでした]"
-        
-        formatted_results = []
-        citations = []
-        for i, res in enumerate(results):
-            title = res.get('title', 'No Title')
-            href = res.get('href', '#')
-            body = res.get('body', '')
-            formatted_results.append(f"### {title}\n{body}")
-            citations.append(f"- [{title}]({href})")
-        
-        final_response = "\n\n".join(formatted_results)
-        if citations:
-            final_response += "\n\n**引用元 (DuckDuckGo):**\n" + "\n".join(citations)
-        
-        return final_response
-        
-    except Exception as e:
-        print(f"  - DuckDuckGo検索でエラー: {e}")
-        traceback.print_exc()
-        return f"[エラー: DuckDuckGo検索中に問題が発生しました。詳細: {e}]"
+        completed = subprocess.run(
+            command,
+            input=json.dumps(request, ensure_ascii=False),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=_DDG_WORKER_TIMEOUT_SECONDS,
+            env=_ddg_worker_environment(),
+            creationflags=creationflags,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", []
+    except OSError:
+        return "worker-error", []
+
+    try:
+        payload = json.loads(completed.stdout)
+    except (TypeError, ValueError):
+        return "worker-error", []
+    if completed.returncode != 0 or not isinstance(payload, dict) or payload.get("ok") is not True:
+        error = payload.get("error") if isinstance(payload, dict) else None
+        return str(error or "provider-error"), []
+    results = payload.get("results")
+    if not isinstance(results, list):
+        return "worker-error", []
+    return "ok", [item for item in results if isinstance(item, dict)]
+
+
+def _search_with_ddg(query: str) -> str:
+    """DuckDuckGoを使用して検索を実行する内部関数。
+
+    primpのnative root storeはプロセス内で初回生成後に保持されるため、
+    メインプロセスへDDGSを直接作らず、certifiを最初に選ぶ短命workerで実行する。
+    """
+
+    status, results = _run_ddg_worker(query)
+    if status != "ok":
+        print(f"  - DuckDuckGo検索を完了できませんでした ({status})")
+        if status == "timeout":
+            return "[エラー: DuckDuckGo検索が時間内に完了しませんでした]"
+        return "[エラー: DuckDuckGo検索を実行できませんでした]"
+    if not results:
+        return "[情報: DuckDuckGo検索で結果が見つかりませんでした]"
+
+    formatted_results = []
+    citations = []
+    for res in results:
+        title = res.get("title", "No Title")
+        href = res.get("href", "#")
+        body = res.get("body", "")
+        formatted_results.append(f"### {title}\n{body}")
+        citations.append(f"- [{title}]({href})")
+
+    final_response = "\n\n".join(formatted_results)
+    if citations:
+        final_response += "\n\n**引用元 (DuckDuckGo):**\n" + "\n".join(citations)
+    return final_response
 
 
 def _search_with_google(query: str) -> str:

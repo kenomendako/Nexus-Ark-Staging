@@ -3,7 +3,7 @@ Nexus Ark: prepare the managed Python used by the protected Windows launcher.
 
 This helper deliberately has no dependency on the application or on a Python
 installation.  It runs under Windows PowerShell 5.1 before the protected host
-is started and only asks uv to add CPython 3.12.15 to uv's managed directory.
+is started and only asks uv to add CPython 3.12.16 to uv's managed directory.
 It never edits a virtual environment, a launcher, or the Windows registry.
 
 The caller supplies the exact uv executable.  Installation disables configuration discovery; the legacy selection probe
@@ -25,10 +25,11 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$script:RequiredPython = '3.12.15'
+$script:RequiredPython = '3.12.16'
 $script:RequiredPythonVersion = [version]$script:RequiredPython
-$script:PythonRequest = 'cpython@3.12.15'
+$script:PythonRequest = 'cpython@3.12.16'
 $script:MinimumUvVersion = [version]'0.13.4'
+$script:PythonDownloadsCatalogSha256 = '03d6e44c6566cb8af8b429cc64265797e918a9221250cd41dbbf2b6e87fc23db'
 $script:VersionProbe = 'import sys; print(sys.implementation.name); print(sys.version.split()[0])'
 
 function Get-NormalizedPath {
@@ -130,6 +131,15 @@ function Assert-ManagedDirectoryPath {
     return $full
 }
 
+function Get-TrustedPythonDownloadsCatalog {
+    $catalog = Assert-SafePath -Path (Join-Path $PSScriptRoot 'python-downloads.json') -RequireFile -Label 'Python downloads catalog'
+    $actualHash = (Get-FileHash -LiteralPath $catalog -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualHash -ne $script:PythonDownloadsCatalogSha256) {
+        throw 'The bundled Python downloads catalog failed its SHA256 check.'
+    }
+    return $catalog
+}
+
 function Set-ProcessEnvironmentValue {
     param(
         [Parameter(Mandatory = $true)]
@@ -170,11 +180,19 @@ function Invoke-Uv {
 
     $previous = @{}
     $wasPresent = @{}
+    # Never inherit an operator-provided catalog.  Only Install-RequiredPython
+    # supplies this variable after validating the bundled, hash-pinned file.
+    $environmentNames = @('UV_PYTHON_DOWNLOADS_JSON_URL')
+    foreach ($name in $Environment.Keys) {
+        if ($environmentNames -notcontains [string]$name) {
+            $environmentNames += [string]$name
+        }
+    }
     $output = @()
     $exitCode = 9009
     $previousErrorActionPreference = $ErrorActionPreference
     try {
-        foreach ($name in $Environment.Keys) {
+        foreach ($name in $environmentNames) {
             $environmentPath = 'Env:{0}' -f $name
             if (Test-Path -LiteralPath $environmentPath) {
                 $wasPresent[$name] = $true
@@ -184,7 +202,12 @@ function Invoke-Uv {
             else {
                 $wasPresent[$name] = $false
             }
-            Set-ProcessEnvironmentValue -Name $name -Value ([string]$Environment[$name])
+            if ($Environment.ContainsKey($name)) {
+                Set-ProcessEnvironmentValue -Name $name -Value ([string]$Environment[$name])
+            }
+            else {
+                Remove-ProcessEnvironmentValue -Name $name
+            }
         }
 
         try {
@@ -205,7 +228,7 @@ function Invoke-Uv {
     }
     finally {
         $ErrorActionPreference = $previousErrorActionPreference
-        foreach ($name in $Environment.Keys) {
+        foreach ($name in $environmentNames) {
             if (-not $wasPresent.ContainsKey($name)) {
                 continue
             }
@@ -373,7 +396,11 @@ function Install-RequiredPython {
         '--no-bin', '--no-registry', '--install-dir', $ManagedDirectory,
         '--no-config'
     )
-    $environment = @{ UV_PYTHON_INSTALL_DIR = $ManagedDirectory }
+    $catalog = Get-TrustedPythonDownloadsCatalog
+    $environment = @{
+        UV_PYTHON_INSTALL_DIR = $ManagedDirectory
+        UV_PYTHON_DOWNLOADS_JSON_URL = $catalog
+    }
     $result = Invoke-Uv -Executable $Executable -Arguments $arguments -Environment $environment
     if ($result.ExitCode -ne 0) {
         throw 'Could not install the required managed Python. Check network access and uv.'

@@ -11,7 +11,7 @@ import hashlib
 from pathlib import Path
 from filelock import Timeout
 from tuf.api.exceptions import BadVersionNumberError
-from tufup.client import Client
+from secure_tuf_client import SecureTufClient
 from file_lock_utils import get_file_lock
 from runtime_tuf import RuntimeTargetClient
 from update_host.contracts import is_python_bytecode_cache, validate_release_tree
@@ -450,7 +450,7 @@ class UpdateManager:
         self,
         update_url=None,
         *,
-        client_factory=Client,
+        client_factory=SecureTufClient,
         runtime_client_factory=RuntimeTargetClient,
         cleanup_old_archives=True,
     ):

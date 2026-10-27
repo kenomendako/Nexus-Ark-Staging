@@ -26,8 +26,13 @@ if (-not $script:IsDotSourced) {
 }
 
 # 89d5c9eb stable host: seven files.  5746fd60 adds windows_processes.py and
-# changes the transaction/supervisor files.  These are the only bytes this
-# helper may accept; the source is not an authorization boundary by itself.
+# changes the transaction/supervisor files.  The latter is retained as an
+# approved *previous* eight-file generation because a package may have
+# already completed that migration before the next host refresh.  The source
+# is not an authorization boundary by itself: every complete generation is
+# pinned below and receipts must carry one of these exact maps.
+# Receipts from the prior helper may label the old8 map as ``known_new``;
+# they are accepted only when their complete ``new_files`` map proves old8.
 $script:KnownOldHostSha256 = [ordered]@{
     '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
     'contracts.py' = '4018fe870273e8fa38b5e07b60bbb49d51edd2feaec38f22e087d528f3fa115f'
@@ -37,7 +42,7 @@ $script:KnownOldHostSha256 = [ordered]@{
     'transaction.py' = '14be150f67201224c0b6a63edcbdb13a42b11a1b64e932d812b4a138af3231ba'
     'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
 }
-$script:KnownNewHostSha256 = [ordered]@{
+$script:KnownOld8HostSha256 = [ordered]@{
     '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
     'contracts.py' = '4018fe870273e8fa38b5e07b60bbb49d51edd2feaec38f22e087d528f3fa115f'
     'runtime.py' = '38490c97b317a73ae029c7b6e9b8765625a8e9229388963130cf955334b303d3'
@@ -47,14 +52,44 @@ $script:KnownNewHostSha256 = [ordered]@{
     'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
     'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
 }
+$script:KnownNewHostSha256 = [ordered]@{
+    '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
+    'contracts.py' = '958c0c669f716b4eeb04083a1ba39eba913d90bfd7baae7b9c9a15bad848af20'
+    'runtime.py' = '38490c97b317a73ae029c7b6e9b8765625a8e9229388963130cf955334b303d3'
+    'runtime_archive.py' = 'd4484f97a0d71531f9ac046b36d98bb47f092149335b559e36158a2493922b25'
+    'supervisor.py' = '91f59ac334a8c4d9955605e147c7519d3020992ebd9bf00c069bbfbe13b07b2e'
+    'transaction.py' = '1a06f6ca858b040cd877de5bf8f31ae00a003486dbd9de56ea22dc5fabae7fe7'
+    'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
+    'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
+}
+
+function Get-KnownHostGeneration {
+    param([Parameter(Mandatory = $true)][string]$State)
+    switch ($State) {
+        'known_old' {
+            return [ordered]@{ state = 'known_old'; rank = 0; map = $script:KnownOldHostSha256 }
+        }
+        'known_old8' {
+            return [ordered]@{ state = 'known_old8'; rank = 1; map = $script:KnownOld8HostSha256 }
+        }
+        'known_new' {
+            return [ordered]@{ state = 'known_new'; rank = 2; map = $script:KnownNewHostSha256 }
+        }
+        default { throw 'host世代が許可済み一覧にありません。' }
+    }
+}
 
 # Keep this list synchronized with RefreshSecureLauncher.ps1.  Both LF and
 # Windows-package CRLF forms are accepted, but no other Start is replaceable.
 $script:KnownCanonicalStartSha256 = @(
+    'ba5c48ebae2dec33a4da3ee8b644f3e1f99322eb77a23a16ddb675d23b9eb5c7', # 0.61/0.62 LF
+    '34529f95471c044bf199929cc24523f201f71588e066b74616e416523042770d', # 0.61/0.62 Windows CRLF
     'ca8b0cc1e38d4dcc40436f0744436e3c65bcc904cd894c2c263f3eaff02d53d1',
     'b58de9707250d4657d199025b75a1e3c50c315272362c1fe593470b2a163ec20',
     '837c25b9c4b4c5fb30d7f2f6d6081ed8daa4f0bfcbe2aeb31cddca9ddeb24b39',
-    'e3070fbc412577aff121d8a8aff33bb0bd15c790fce205580926569299de7c37'
+    'e3070fbc412577aff121d8a8aff33bb0bd15c790fce205580926569299de7c37',
+    '3bafb0efb475fdd9bd9e686739a461018c1612dc092a356b9bf8a9ed2538684a', # 3.12.16 LF
+    '184427c65309ebc1f45b2d2a2c5f71ee2ec1e70cb40c458a35449c1b06705241' # 3.12.16 CRLF
 )
 
 function Get-NormalizedPath {
@@ -251,7 +286,7 @@ function Compare-HostInventory {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
         [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Expected,
-        [Parameter(Mandatory = $true)][ValidateSet('known_old', 'known_new')][string]$ExpectedState
+        [Parameter(Mandatory = $true)][string]$ExpectedState
     )
     $records = Get-SecureInventory -Root $Root
     $actual = @{}
@@ -300,7 +335,7 @@ function Compare-CurrentInventory {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
         [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Expected,
-        [Parameter(Mandatory = $true)][ValidateSet('known_old', 'known_new')][string]$ExpectedState
+        [Parameter(Mandatory = $true)][string]$ExpectedState
     )
     $current = Assert-RegularDirectory -Path $Root -Label 'updater/current'
     $hostDirectory = Join-Path $current 'update_host'
@@ -341,16 +376,18 @@ function Get-HostState {
     if (-not $item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
         throw 'updater/currentが通常のdirectoryではありません。'
     }
-    $old = $null
-    try { $old = Compare-CurrentInventory -Root $path -Expected $script:KnownOldHostSha256 -ExpectedState 'known_old' } catch {}
-    if ($null -ne $old) { return $old }
-    $new = $null
-    try { $new = Compare-CurrentInventory -Root $path -Expected $script:KnownNewHostSha256 -ExpectedState 'known_new' } catch {}
-    if ($null -ne $new) { return $new }
+    foreach ($generation in @('known_old', 'known_old8', 'known_new')) {
+        $definition = Get-KnownHostGeneration -State $generation
+        try {
+            $verified = Compare-CurrentInventory -Root $path -Expected $definition.map -ExpectedState $definition.state
+            if ($null -ne $verified) { return $verified }
+        }
+        catch {}
+    }
     throw 'updater/currentのhost全体が既知の7/8 file構成ではありません。'
 }
 
-function Assert-NewSourceHost {
+function Assert-ApprovedSourceHost {
     param([Parameter(Mandatory = $true)][string]$SourceHostPath)
     $source = Get-NormalizedPath $SourceHostPath
     Assert-NoReparseAncestors -Path $source -Label 'source updater/current' | Out-Null
@@ -359,8 +396,25 @@ function Assert-NewSourceHost {
     if ($leaf -ine 'current' -or (Split-Path -Leaf $parent) -ine 'updater') {
         throw 'sourceはdistribution/updater/currentでなければなりません。'
     }
-    $verified = Compare-CurrentInventory -Root $source -Expected $script:KnownNewHostSha256 -ExpectedState 'known_new'
-    return [ordered]@{ path = $source; inventory = $verified }
+    foreach ($generation in @('known_old', 'known_old8', 'known_new')) {
+        $definition = Get-KnownHostGeneration -State $generation
+        try {
+            $verified = Compare-CurrentInventory -Root $source -Expected $definition.map -ExpectedState $definition.state
+            if ($null -ne $verified) {
+                return [ordered]@{ path = $source; inventory = $verified }
+            }
+        }
+        catch {}
+    }
+    throw 'source updater/currentが許可済みhost世代と一致しません。'
+}
+
+function Assert-NewSourceHost {
+    # Compatibility entry point for callers that used the previous helper
+    # name.  Source validation now accepts the approved old8 generation too,
+    # so an interrupted old7→old8 receipt can be recovered safely.
+    param([Parameter(Mandatory = $true)][string]$SourceHostPath)
+    return Assert-ApprovedSourceHost -SourceHostPath $SourceHostPath
 }
 
 function Get-CanonicalStartState {
@@ -479,6 +533,11 @@ function Assert-ReceiptPaths {
         $Receipt.parked_relative -notmatch ('^update_recovery\\secure-update-host-repair\\' + [regex]::Escape($operationId) + '\\parked-old$') -or
         $Receipt.receipt_relative -notmatch ('^update_recovery\\secure-update-host-repair\\' + [regex]::Escape($operationId) + '\\receipt\.json$')) {
         throw 'repair receiptのpathが固定契約と一致しません。'
+    }
+    $oldDefinition = Get-ReceiptGenerationDefinition -Receipt $Receipt -Role old
+    $newDefinition = Get-ReceiptGenerationDefinition -Receipt $Receipt -Role new
+    if ($oldDefinition.rank -ge $newDefinition.rank) {
+        throw 'repair receiptのhost世代の順序が不正です。'
     }
 }
 
@@ -608,7 +667,7 @@ function Assert-AppLockClear {
         throw 'app/nexus_ark.lockのprocessを確認できません。'
     }
     if ([string]$details[0].CommandLine -match '(?i)nexus_ark(\.py|\.exe)') {
-        throw 'Nexus Arkが実行中です。'
+        throw 'app/nexus_ark.lockが実行中のNexus Arkを示しています。'
     }
 }
 
@@ -783,8 +842,23 @@ function Get-PendingRepair {
     $pending = @($receipts | Where-Object { [string]$_.value.state -ne 'complete' })
     $completed = @($receipts | Where-Object { [string]$_.value.state -eq 'complete' })
     if ($pending.Count -gt 1) { throw '未完了の修復receiptが複数あります。' }
-    if ($completed.Count -gt 1 -or ($pending.Count -gt 0 -and $completed.Count -gt 0)) {
-        throw '修復receiptが複数あり、どの世代を確定すべきか判定できません。'
+    foreach ($complete in $completed) {
+        Assert-ReceiptPaths -TargetRoot $TargetRoot -Receipt $complete.value
+        Assert-ReceiptTree -TargetRoot $TargetRoot -Receipt $complete.value -Kind backup | Out-Null
+        $completedStaging = Get-ReceiptPathValue -TargetRoot $TargetRoot -Receipt $complete.value -Name 'staging_relative'
+        Assert-NoReparseAncestors -Path $completedStaging -Label 'completed staging' -AllowMissing
+        if (Test-Path -LiteralPath $completedStaging) {
+            throw '完了済みの修復にstaging世代が残っています。'
+        }
+        Assert-ReceiptTree -TargetRoot $TargetRoot -Receipt $complete.value -Kind parked | Out-Null
+    }
+    $completedStates = @{}
+    foreach ($complete in $completed) {
+        $newState = (Get-ReceiptGenerationDefinition -Receipt $complete.value -Role new).state
+        if ($completedStates.ContainsKey($newState)) {
+            throw '同じhost世代の完了済み修復receiptが複数あります。'
+        }
+        $completedStates[$newState] = $true
     }
     if ($pending.Count -eq 1) {
         $receipt = $pending[0]
@@ -796,20 +870,21 @@ function Get-PendingRepair {
                 Assert-ReceiptTree -TargetRoot $TargetRoot -Receipt $receipt.value -Kind $kind | Out-Null
             }
         }
+        $pendingNewState = (Get-ReceiptGenerationDefinition -Receipt $receipt.value -Role new).state
+        if (@($completed | Where-Object {
+                    (Get-ReceiptGenerationDefinition -Receipt $_.value -Role new).state -eq $pendingNewState
+                }).Count -gt 0) {
+            throw '同じhost世代の完了済み修復receiptと未完了receiptが混在しています。'
+        }
+        # 完了履歴はdisk上で検証・保持済み。絶対pathを含む取得wrapperを
+        # pending receiptへ付加せず、後続操作ではdiskから再列挙する。
         return $receipt
     }
-    foreach ($complete in $completed) {
-        Assert-ReceiptPaths -TargetRoot $TargetRoot -Receipt $complete.value
-        Assert-ReceiptTree -TargetRoot $TargetRoot -Receipt $complete.value -Kind backup | Out-Null
-        $completedStaging = Get-ReceiptPathValue -TargetRoot $TargetRoot -Receipt $complete.value -Name 'staging_relative'
-        Assert-NoReparseAncestors -Path $completedStaging -Label 'completed staging' -AllowMissing
-        if (Test-Path -LiteralPath $completedStaging) {
-            throw '完了済みの修復にstaging世代が残っています。'
-        }
-        Assert-ReceiptTree -TargetRoot $TargetRoot -Receipt $complete.value -Kind parked | Out-Null
-    }
     if ($receipts.Count -gt 0) {
-        return [ordered]@{ complete = $true; receipt = $receipts[$receipts.Count - 1] }
+        $orderedCompleted = @($completed | Sort-Object -Property @{ Expression = {
+                    (Get-ReceiptGenerationDefinition -Receipt $_.value -Role new).rank
+                } })
+        return [ordered]@{ complete = $true; receipt = $orderedCompleted[$orderedCompleted.Count - 1]; receipts = @($orderedCompleted) }
     }
     return $null
 }
@@ -832,8 +907,8 @@ function New-SecureReceipt {
         staging_relative = Join-Path $operationRelative 'staging-current'
         parked_relative = Join-Path $operationRelative 'parked-old'
         receipt_relative = Join-Path $operationRelative 'receipt.json'
-        old_state = 'known_old'
-        new_state = 'known_new'
+        old_state = [string]$OldInventory.state
+        new_state = [string]$NewInventory.state
         old_files = $OldInventory.files
         new_files = $NewInventory.files
         ignored_pycache = [int]$OldInventory.ignored_pycache + [int]$NewInventory.ignored_pycache
@@ -849,6 +924,62 @@ function Get-ReceiptPathValue {
     return Resolve-TargetRelative -Root $TargetRoot -Relative ([string]$Receipt.$Name) -Label $Name
 }
 
+function Assert-ReceiptFilesExact {
+    param(
+        [Parameter(Mandatory = $true)]$Files,
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Expected,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    if ($null -eq $Files) { throw ('{0}がありません。' -f $Label) }
+    $entries = New-Object System.Collections.ArrayList
+    if ($Files -is [System.Collections.IDictionary]) {
+        foreach ($key in $Files.Keys) {
+            [void]$entries.Add([ordered]@{ key = [string]$key; value = [string]$Files[$key] })
+        }
+    }
+    else {
+        foreach ($property in @($Files.PSObject.Properties)) {
+            [void]$entries.Add([ordered]@{ key = [string]$property.Name; value = [string]$property.Value })
+        }
+    }
+    if ($entries.Count -ne $Expected.Count) { throw ('{0}が承認済み完全mapと一致しません。' -f $Label) }
+    $seen = @{}
+    foreach ($entry in $entries) {
+        $key = [string]$entry.key
+        $lower = $key.ToLowerInvariant()
+        if ($seen.ContainsKey($lower) -or -not (@($Expected.Keys) -ccontains $key)) {
+            throw ('{0}が承認済み完全mapと一致しません。' -f $Label)
+        }
+        $seen[$lower] = $true
+        if ([string]$entry.value -cne [string]$Expected[$key]) {
+            throw ('{0}が承認済み完全mapと一致しません。' -f $Label)
+        }
+    }
+}
+
+function Get-ReceiptGenerationDefinition {
+    param(
+        [Parameter(Mandatory = $true)]$Receipt,
+        [Parameter(Mandatory = $true)][ValidateSet('old', 'new')][string]$Role
+    )
+    $stateName = if ($Role -eq 'old') { [string]$Receipt.old_state } else { [string]$Receipt.new_state }
+    $files = if ($Role -eq 'old') { $Receipt.old_files } else { $Receipt.new_files }
+    foreach ($candidateName in @('known_old', 'known_old8', 'known_new')) {
+        $candidate = Get-KnownHostGeneration -State $candidateName
+        try { Assert-ReceiptFilesExact -Files $files -Expected $candidate.map -Label ('receipt {0}_files' -f $Role) }
+        catch { continue }
+        if ($stateName -eq $candidate.state) { return $candidate }
+        # Receipts emitted by the previous helper called the old8 host
+        # ``known_new``.  The complete old8 map is the compatibility proof;
+        # no state-only or partial-map fallback is accepted.
+        if ($Role -eq 'new' -and $stateName -eq 'known_new' -and $candidate.state -eq 'known_old8') {
+            return [ordered]@{ state = 'known_old8'; rank = $candidate.rank; map = $candidate.map; legacy_label = $true }
+        }
+        throw ('receiptの{0}_stateと{0}_filesが一致しません。' -f $Role)
+    }
+    throw ('receiptの{0}_filesが承認済み完全mapと一致しません。' -f $Role)
+}
+
 function Assert-ReceiptTree {
     param(
         [Parameter(Mandatory = $true)][string]$TargetRoot,
@@ -858,8 +989,14 @@ function Assert-ReceiptTree {
     $relativeName = '{0}_relative' -f $Kind
     $path = Get-ReceiptPathValue -TargetRoot $TargetRoot -Receipt $Receipt -Name $relativeName
     Assert-RegularDirectory -Path $path -Label ('receipt {0}' -f $Kind) | Out-Null
-    $expected = if ($Kind -eq 'backup' -or $Kind -eq 'parked') { $script:KnownOldHostSha256 } else { $script:KnownNewHostSha256 }
-    $expectedState = if ($Kind -eq 'backup' -or $Kind -eq 'parked') { 'known_old' } else { 'known_new' }
+    $oldDefinition = Get-ReceiptGenerationDefinition -Receipt $Receipt -Role old
+    $newDefinition = Get-ReceiptGenerationDefinition -Receipt $Receipt -Role new
+    if ($oldDefinition.rank -ge $newDefinition.rank) {
+        throw 'repair receiptのhost世代の順序が不正です。'
+    }
+    $definition = if ($Kind -eq 'backup' -or $Kind -eq 'parked') { $oldDefinition } else { $newDefinition }
+    $expected = $definition.map
+    $expectedState = $definition.state
     return Compare-CurrentInventory -Root $path -Expected $expected -ExpectedState $expectedState
 }
 
@@ -871,6 +1008,10 @@ function Invoke-RepairRecovery {
     )
     $receipt = $Pending.value
     $root = Get-NormalizedPath $TargetRoot
+    $oldDefinition = Get-ReceiptGenerationDefinition -Receipt $receipt -Role old
+    $newDefinition = Get-ReceiptGenerationDefinition -Receipt $receipt -Role new
+    $oldMap = $oldDefinition.map
+    $newMap = $newDefinition.map
     $current = Get-ReceiptPathValue -TargetRoot $root -Receipt $receipt -Name 'current_relative'
     $backup = Get-ReceiptPathValue -TargetRoot $root -Receipt $receipt -Name 'backup_relative'
     $staging = Get-ReceiptPathValue -TargetRoot $root -Receipt $receipt -Name 'staging_relative'
@@ -885,16 +1026,17 @@ function Invoke-RepairRecovery {
     if ($parkedExists) { Assert-ReceiptTree -TargetRoot $root -Receipt $receipt -Kind parked | Out-Null }
     Assert-ReceiptTree -TargetRoot $root -Receipt $receipt -Kind backup | Out-Null
 
-    if ($currentState.state -eq 'known_new' -and $parkedExists) {
+    if ($currentState.state -eq $newDefinition.state -and $parkedExists) {
         if ($stagingExists) { throw '新版currentとstagingが重複しているため停止します。' }
         Assert-CacheFreeCurrent -Root $current
+        $receipt.new_state = $newDefinition.state
         $receipt.state = 'new_promoted'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
         $receipt.state = 'complete'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
-        return New-SecureRepairResult -State 'known_new' -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -RecoveryAction 'verified_new_finalized' -Message '検証済み新版hostを確定しました。'
+        return New-SecureRepairResult -State $newDefinition.state -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $oldMap['supervisor.py'] -NewSha256 $newMap['supervisor.py'] -RecoveryAction 'verified_new_finalized' -Message '検証済み新版hostを確定しました。'
     }
-    if ($currentState.state -eq 'known_old' -and -not $parkedExists) {
+    if ($currentState.state -eq $oldDefinition.state -and -not $parkedExists) {
         if ($stagingExists) {
             Assert-AppLockClear -Root $root
             Assert-TargetProcessesStopped -Root $root
@@ -913,26 +1055,27 @@ function Invoke-RepairRecovery {
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Invoke-SecureDirectoryMove -Source $staging -Destination $current
-        Compare-CurrentInventory -Root $current -Expected $script:KnownNewHostSha256 -ExpectedState 'known_new' | Out-Null
+        Compare-CurrentInventory -Root $current -Expected $newMap -ExpectedState $newDefinition.state | Out-Null
         Assert-CacheFreeCurrent -Root $current
         $receipt.state = 'new_promoted'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
         $receipt.state = 'complete'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
-        return New-SecureRepairResult -State 'known_new' -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -RecoveryAction 'verified_old_parked_then_new_promoted' -Message '中断後に検証済み新版hostを確定しました。'
+        $receipt.new_state = $newDefinition.state
+        return New-SecureRepairResult -State $newDefinition.state -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $oldMap['supervisor.py'] -NewSha256 $newMap['supervisor.py'] -RecoveryAction 'verified_old_parked_then_new_promoted' -Message '中断後に検証済み新版hostを確定しました。'
     }
     if ($null -eq $currentItem -and $parkedExists -and -not $stagingExists) {
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Copy-SecureTree -Source $backup -Destination $current
-        Compare-CurrentInventory -Root $current -Expected $script:KnownOldHostSha256 -ExpectedState 'known_old' | Out-Null
+        Compare-CurrentInventory -Root $current -Expected $oldMap -ExpectedState $oldDefinition.state | Out-Null
         $receipt.state = 'restored_old'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
-        return New-SecureRepairResult -State 'repair_pending' -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -RecoveryAction 'verified_old_restored' -Message '新版を確定できず、検証済み旧hostへ戻しました。'
+        return New-SecureRepairResult -State 'repair_pending' -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $oldMap['supervisor.py'] -RecoveryAction 'verified_old_restored' -Message '新版を確定できず、検証済み旧hostへ戻しました。'
     }
-    if ($currentState.state -eq 'known_old' -and $parkedExists -and -not $stagingExists -and
+    if ($currentState.state -eq $oldDefinition.state -and $parkedExists -and -not $stagingExists -and
         [string]$receipt.state -eq 'restored_old') {
-        return New-SecureRepairResult -State 'repair_pending' -Changed $false -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -RecoveryAction 'verified_old_restored' -Message '検証済み旧hostを保持しています。新版hostは確定していません。'
+        return New-SecureRepairResult -State 'repair_pending' -Changed $false -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $oldMap['supervisor.py'] -RecoveryAction 'verified_old_restored' -Message '検証済み旧hostを保持しています。新版hostは確定していません。'
     }
     if ($null -eq $currentItem -and -not $parkedExists) {
         # A crash or external interruption before current→parked must never
@@ -941,10 +1084,10 @@ function Invoke-RepairRecovery {
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Copy-SecureTree -Source $backup -Destination $current
-        Compare-CurrentInventory -Root $current -Expected $script:KnownOldHostSha256 -ExpectedState 'known_old' | Out-Null
+        Compare-CurrentInventory -Root $current -Expected $oldMap -ExpectedState $oldDefinition.state | Out-Null
         $receipt.state = 'restored_old'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
-        return New-SecureRepairResult -State 'repair_pending' -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -RecoveryAction 'verified_old_restored' -Message 'currentが失われたため、検証済み旧hostを復旧しました。'
+        return New-SecureRepairResult -State 'repair_pending' -Changed $true -TargetRoot $root -SourceHostPath $SourceHostPath -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $oldMap['supervisor.py'] -RecoveryAction 'verified_old_restored' -Message 'currentが失われたため、検証済み旧hostを復旧しました。'
     }
     throw '修復receiptとhost世代の組合せが未知状態です。上書きせず停止しました。'
 }
@@ -972,7 +1115,12 @@ function Invoke-SecureUpdateHostRepair {
     if ($assessment.state -eq 'missing' -and ($null -eq $pending -or $hasCompleteReceipt)) {
         throw 'canonical hostがないrootに、復旧可能な未完了receiptがありません。'
     }
-    $source = Assert-NewSourceHost -SourceHostPath $SourceHostPath
+    $source = Assert-ApprovedSourceHost -SourceHostPath $SourceHostPath
+    $sourceDefinition = Get-KnownHostGeneration -State ([string]$source.inventory.state)
+    $assessmentDefinition = if ($assessment.state -in @('known_old', 'known_old8', 'known_new')) {
+        Get-KnownHostGeneration -State ([string]$assessment.state)
+    }
+    else { $null }
     if ($InspectOnly) {
         Assert-NoPendingArtifacts -Root $root
         Assert-AppLockClear -Root $root
@@ -980,17 +1128,28 @@ function Invoke-SecureUpdateHostRepair {
         Assert-SecureRepairLeaseAvailable -Root $root
     }
     if ($hasCompleteReceipt) {
-        if ($assessment.state -ne 'known_new') { throw 'complete receiptと現在hostが一致しません。' }
-        if ($InspectOnly) {
-            return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $pending.receipt.value.receipt_relative -BackupRelative $pending.receipt.value.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。'
+        $completeReceipt = $pending.receipt.value
+        $completeDefinition = Get-ReceiptGenerationDefinition -Receipt $completeReceipt -Role new
+        if ($assessment.state -ne $completeDefinition.state) { throw 'complete receiptと現在hostが一致しません。' }
+        if ($sourceDefinition.rank -le $completeDefinition.rank) {
+            if ($sourceDefinition.rank -lt $completeDefinition.rank) {
+                throw 'sourceが現在hostより古い世代です。'
+            }
+            if ($InspectOnly) {
+                return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $completeReceipt.receipt_relative -BackupRelative $completeReceipt.backup_relative -OldSha256 $completeDefinition.map['supervisor.py'] -NewSha256 $completeDefinition.map['supervisor.py'] -Message '既知のhost世代です。'
+            }
+            Assert-NoPendingArtifacts -Root $root
+            Assert-AppLockClear -Root $root
+            Assert-TargetProcessesStopped -Root $root
+            Assert-SecureRepairLeaseAvailable -Root $root
+            return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $completeReceipt.receipt_relative -BackupRelative $completeReceipt.backup_relative -OldSha256 $completeDefinition.map['supervisor.py'] -NewSha256 $completeDefinition.map['supervisor.py'] -Message '既知のhost世代です。変更しません。'
         }
-        Assert-NoPendingArtifacts -Root $root
-        Assert-AppLockClear -Root $root
-        Assert-TargetProcessesStopped -Root $root
-        Assert-SecureRepairLeaseAvailable -Root $root
-        return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $pending.receipt.value.receipt_relative -BackupRelative $pending.receipt.value.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。変更しません。'
     }
-    if ($null -ne $pending) {
+    if ($null -ne $pending -and -not $hasCompleteReceipt) {
+        $pendingDefinition = Get-ReceiptGenerationDefinition -Receipt $pending.value -Role new
+        if ($sourceDefinition.rank -lt $pendingDefinition.rank) {
+            throw 'sourceが未完了receiptの対象世代より古い世代です。'
+        }
         if ($InspectOnly) {
             return New-SecureRepairResult -State 'repair_pending' -Changed $false -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $pending.value.receipt_relative -BackupRelative $pending.value.backup_relative -RecoveryAction ([string]$pending.value.state) -Message '未完了の修復receiptがあります。'
         }
@@ -998,30 +1157,57 @@ function Invoke-SecureUpdateHostRepair {
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         $lock = $null
+        $recoveryResult = $null
         try {
             $lock = Open-SecureRepairLock -Root $root
             Assert-NoPendingArtifacts -Root $root
-            return Invoke-RepairRecovery -TargetRoot $root -SourceHostPath $source.path -Pending $pending
+            $recoveryResult = Invoke-RepairRecovery -TargetRoot $root -SourceHostPath $source.path -Pending $pending
         }
         finally {
             if ($null -ne $lock) {
                 $lock.Dispose()
             }
         }
+        # A package may contain the latest new8 source while an interrupted
+        # legacy receipt only proves old8.  Complete that recovery first,
+        # release the old lease, then start a fresh old8→new8 operation.  The
+        # two receipts remain separate and each tree is verified before the
+        # next generation is touched.
+        if ($sourceDefinition.rank -gt $pendingDefinition.rank -and
+            [string]$recoveryResult.state -eq $pendingDefinition.state) {
+            return Invoke-SecureUpdateHostRepair -TargetRoot $root -SourceHostPath $source.path
+        }
+        return $recoveryResult
+    }
+    if ($assessment.state -in @('known_old', 'known_old8', 'known_new')) {
+        if ($sourceDefinition.rank -lt $assessmentDefinition.rank) {
+            throw 'sourceが現在hostより古い世代です。'
+        }
+        if ($sourceDefinition.rank -eq $assessmentDefinition.rank) {
+            $sameMap = $assessmentDefinition.map
+            if ($InspectOnly) {
+                return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $sameMap['supervisor.py'] -NewSha256 $sameMap['supervisor.py'] -Message '既知のhost世代です。'
+            }
+            Assert-NoPendingArtifacts -Root $root
+            Assert-AppLockClear -Root $root
+            Assert-TargetProcessesStopped -Root $root
+            Assert-SecureRepairLeaseAvailable -Root $root
+            return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $sameMap['supervisor.py'] -NewSha256 $sameMap['supervisor.py'] -Message '既知のhost世代です。変更しません。'
+        }
     }
     if ($assessment.state -eq 'known_new') {
         if ($InspectOnly) {
-            return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。'
+            return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownNewHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。'
         }
         Assert-NoPendingArtifacts -Root $root
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Assert-SecureRepairLeaseAvailable -Root $root
-        return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。変更しません。'
+        return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownNewHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。変更しません。'
     }
-    if ($assessment.state -ne 'known_old') { throw '修復対象hostが既知旧版ではありません。' }
+    if ($assessment.state -notin @('known_old', 'known_old8')) { throw '修復対象hostが既知旧版ではありません。' }
     if ($InspectOnly) {
-        return New-SecureRepairResult -State 'known_old' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の旧hostです。修復可能です。'
+        return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $assessmentDefinition.map['supervisor.py'] -NewSha256 $sourceDefinition.map['supervisor.py'] -Message '既知の旧hostです。修復可能です。'
     }
     Assert-NoPendingArtifacts -Root $root
     Assert-AppLockClear -Root $root
@@ -1047,38 +1233,107 @@ function Invoke-SecureUpdateHostRepair {
         $backup = Join-Path $operationRoot 'backup-current'
         $staging = Join-Path $operationRoot 'staging-current'
         $parked = Join-Path $operationRoot 'parked-old'
-        $oldInventory = Compare-CurrentInventory -Root $assessment.current -Expected $script:KnownOldHostSha256 -ExpectedState 'known_old'
-        $newInventory = Compare-CurrentInventory -Root $source.path -Expected $script:KnownNewHostSha256 -ExpectedState 'known_new'
+        $oldInventory = Compare-CurrentInventory -Root $assessment.current -Expected $assessmentDefinition.map -ExpectedState ([string]$assessment.state)
+        $newInventory = Compare-CurrentInventory -Root $source.path -Expected $sourceDefinition.map -ExpectedState ([string]$source.inventory.state)
         Copy-SecureTree -Source $assessment.current -Destination $backup
-        Compare-CurrentInventory -Root $backup -Expected $script:KnownOldHostSha256 -ExpectedState 'known_old' | Out-Null
+        Compare-CurrentInventory -Root $backup -Expected $assessmentDefinition.map -ExpectedState ([string]$assessment.state) | Out-Null
         Copy-SecureTree -Source $source.path -Destination $staging -ExcludePythonCache
-        Compare-CurrentInventory -Root $staging -Expected $script:KnownNewHostSha256 -ExpectedState 'known_new' | Out-Null
+        Compare-CurrentInventory -Root $staging -Expected $sourceDefinition.map -ExpectedState ([string]$source.inventory.state) | Out-Null
         Assert-CacheFreeCurrent -Root $staging
         $receipt = New-SecureReceipt -TargetRoot $root -OperationId $operationId -OldInventory $oldInventory -NewInventory $newInventory
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
-        Compare-CurrentInventory -Root $assessment.current -Expected $script:KnownOldHostSha256 -ExpectedState 'known_old' | Out-Null
+        Compare-CurrentInventory -Root $assessment.current -Expected $assessmentDefinition.map -ExpectedState ([string]$assessment.state) | Out-Null
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Invoke-SecureDirectoryMove -Source $assessment.current -Destination $parked
         Assert-ReceiptTree -TargetRoot $root -Receipt $receipt -Kind parked | Out-Null
         $receipt.state = 'old_parked'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
-        Compare-CurrentInventory -Root $staging -Expected $script:KnownNewHostSha256 -ExpectedState 'known_new' | Out-Null
+        Compare-CurrentInventory -Root $staging -Expected $sourceDefinition.map -ExpectedState ([string]$source.inventory.state) | Out-Null
         Assert-CacheFreeCurrent -Root $staging
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Invoke-SecureDirectoryMove -Source $staging -Destination $assessment.current
-        Compare-CurrentInventory -Root $assessment.current -Expected $script:KnownNewHostSha256 -ExpectedState 'known_new' | Out-Null
+        Compare-CurrentInventory -Root $assessment.current -Expected $sourceDefinition.map -ExpectedState ([string]$source.inventory.state) | Out-Null
         $receipt.state = 'new_promoted'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
         $receipt.state = 'complete'
         Invoke-SecureReceiptWrite -TargetRoot $root -Receipt $receipt
-        return New-SecureRepairResult -State 'known_new' -Changed $true -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $script:KnownOldHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -RecoveryAction 'old_backed_up_new_promoted' -Message '検証済み新版hostへ交換しました。'
+        return New-SecureRepairResult -State ([string]$source.inventory.state) -Changed $true -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $receipt.receipt_relative -BackupRelative $receipt.backup_relative -OldSha256 $assessmentDefinition.map['supervisor.py'] -NewSha256 $sourceDefinition.map['supervisor.py'] -RecoveryAction 'old_backed_up_new_promoted' -Message '検証済み新版hostへ交換しました。'
     }
     finally {
         if ($null -ne $lock) {
             $lock.Dispose()
         }
+    }
+}
+
+function Get-SecureRepairFailureClassification {
+    <#
+    Convert an internal validation message into a small, stable contract for
+    the batch/PowerShell caller.  The message itself is deliberately not
+    returned: it can contain paths or provider details.  Keep this mapping
+    fail-closed; an unknown error remains ``validation``.
+    #>
+    param([Parameter(Mandatory = $true)][string]$FailureMessage)
+
+    if ($FailureMessage -match '対象Start[.]batがcanonical SHAと一致しません|hostがないrootのStart[.]batがcanonicalではありません') {
+        return [ordered]@{
+            kind = 'start-hash-mismatch'
+            message = '対象フォルダーのStart.batが、対応する更新方式の正規ファイルと一致しません。'
+        }
+    }
+    if ($FailureMessage -match 'app/nexus_ark[.]lockが実行中のNexus Arkを示しています') {
+        return [ordered]@{
+            kind = 'app-lock-active'
+            message = 'アプリのlockが実行中のNexus Arkを示しています。Nexus Arkを完全に終了してから再試行してください。'
+        }
+    }
+    if ($FailureMessage -match '対象rootのNexus Ark processが実行中です|Start[.]batを実行するcmd processが残っています|Nexus Arkが実行中です') {
+        return [ordered]@{
+            kind = 'process-running'
+            message = '対象フォルダーのNexus Arkまたは起動処理が実行中です。完全に終了してから再試行してください。'
+        }
+    }
+    if ($FailureMessage -match '対象rootのprocessを確認できません|Nexus Ark processの詳細を確認できません|Nexus Ark processの実行元を確認できません|app/nexus_ark[.]lockのprocessを確認できません|process状態を安全に確認できません') {
+        return [ordered]@{
+            kind = 'process-unknown'
+            message = '対象フォルダーの実行中プロセスを安全に確認できないため停止しました。診断ツールの結果を確認してください。'
+        }
+    }
+    if ($FailureMessage -match '同じ更新host修復、または未解決の修復lockがあります|同じ更新host修復が実行中です') {
+        return [ordered]@{
+            kind = 'repair-lock-active'
+            message = '更新host修復のlockが使用中です。ほかの準備ツールを閉じてから再試行してください。'
+        }
+    }
+    if ($FailureMessage -match 'app/nexus_ark[.]lockの形式を安全に確認できません|app/nexus_ark[.]lockのprocess状態を安全に確認できません') {
+        return [ordered]@{
+            kind = 'app-lock-invalid'
+            message = 'アプリのlockを安全に確認できないため停止しました。既存フォルダーとbackupを保持してください。'
+        }
+    }
+    if ($FailureMessage -match '未解決の更新lockまたはnext世代があります|未解決の更新stagingがあります|対象root直下に一時更新fileがあります|未解決の[.]next世代があります|update_recoveryに一時更新fileがあります|更新transaction|未完了の更新transactionがあります') {
+        return [ordered]@{
+            kind = 'pending-update'
+            message = '未完了の更新作業が残っているため停止しました。既存フォルダーとbackupを保持してください。'
+        }
+    }
+    if ($FailureMessage -match 'repair receipt|修復receipt|repair workspace|修復receiptとhost世代|修復receiptが複数|staging世代が残っています') {
+        return [ordered]@{
+            kind = 'receipt-or-recovery'
+            message = '更新hostの復旧記録を安全に確認できないため停止しました。既存フォルダーとbackupを保持してください。'
+        }
+    }
+    if ($FailureMessage -match 'host inventory|updater/current|sourceはdistribution|sourceとtarget|SHA256|reparse|リンク|directory|file|path|canonical host|修復対象host') {
+        return [ordered]@{
+            kind = 'inventory-or-path'
+            message = '更新hostまたは対象フォルダーの構成を検証できないため停止しました。'
+        }
+    }
+    return [ordered]@{
+        kind = 'validation'
+        message = '更新host修復の安全条件を満たさないため停止しました。'
     }
 }
 
@@ -1093,33 +1348,24 @@ if (-not $script:IsDotSourced) {
     }
     catch {
         $failureMessage = [string]$_.Exception.Message
-        $failureKind = if ($failureMessage -match '(?i)(process|Nexus Ark|Start\.bat|app/nexus)') {
-            'process-or-lock'
-        }
-        elseif ($failureMessage -match '(?i)(receipt|repair workspace|修復)') {
-            'receipt-or-recovery'
-        }
-        elseif ($failureMessage -match '(?i)(inventory|SHA256|host|source|reparse|リンク|directory|file|path)') {
-            'inventory-or-path'
-        }
-        elseif ($failureMessage -match '(?i)(transaction|next|\.tmp|lock|一時更新)') {
-            'pending-update'
-        }
-        else {
-            'validation'
-        }
+        $failure = Get-SecureRepairFailureClassification -FailureMessage $failureMessage
+        $failureKind = [string]$failure.kind
         [Console]::Error.WriteLine(('更新host修復を拒否しました: {0}' -f $failureKind))
         [ordered]@{
             state = 'blocked'
             changed = $false
-            target_root = $TargetRoot
-            source_host = $SourceHostPath
+            # Never echo user-selected absolute paths in a rejection result.
+            # The caller already knows the selected root and can correlate the
+            # result with its own in-memory operation state.
+            target_root = ''
+            source_host = ''
             receipt_path = ''
             backup_path = ''
             old_sha256 = ''
             new_sha256 = ''
             recovery_action = ''
-            message = '更新host修復を安全に完了できませんでした。'
+            failure_kind = $failureKind
+            message = [string]$failure.message
         } | ConvertTo-Json -Depth 8 -Compress
         exit 1
     }

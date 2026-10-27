@@ -26,7 +26,7 @@ echo [INFO] Starting the protected launcher...
 echo [INFO] First startup may take several minutes. Please keep this window open.
 echo.
 set "PYTHONPATH=%CD%\updater\current"
-uv run --no-project --managed-python --python cpython@3.12.15 python -m update_host.supervisor --root "%CD%"
+uv run --no-project --managed-python --python cpython@3.12.16 python -m update_host.supervisor --root "%CD%"
 set EXIT_CODE=%errorlevel%
 
 if %EXIT_CODE% EQU 123 (

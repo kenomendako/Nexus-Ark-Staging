@@ -445,6 +445,12 @@ def validate_release_tree(
             if allow_persistent_state:
                 if is_generated_release_state(relative):
                     continue
+                # 共有手順は通常の利用で増えるMarkdownデータ。初回seedの
+                # 未掲載追加も利用環境だけで許可し、配布物や実行コードは緩めない。
+                procedure = PurePosixPath(relative)
+                if (procedure.parent.as_posix() == "characters/_shared/memory/procedures"
+                        and procedure.suffix.lower() == ".md"):
+                    continue
                 if classify_release_path(relative) in {
                     "preserve",
                     "secret",

@@ -9,10 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from tufup.client import Client
-
 from update_host.contracts import validate_runtime_binding
 from update_host.runtime_archive import extract_runtime_archive
+from secure_tuf_client import SecureTufClient
 
 
 RUNTIME_TUF_APP_NAME = "Nexus-Ark-LiteRuntime"
@@ -99,7 +98,7 @@ class RuntimeTargetClient:
         project_root: str | os.PathLike[str],
         *,
         update_url: str,
-        client_factory: Callable[..., Any] = Client,
+        client_factory: Callable[..., Any] = SecureTufClient,
     ) -> None:
         root = Path(project_root).absolute()
         base_url = str(update_url).rstrip("/") + "/"

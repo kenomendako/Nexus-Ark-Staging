@@ -22,19 +22,24 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'SecureLauncherMaintenance.ps1')
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 
-# The old protected launcher is the canonical file shipped at HEAD
-# 138d4054.  Both release source copies have this same byte hash.
+# Known protected launchers include the first distributed generation and
+# 138d4054. Body updates preserve Start, so app version cannot identify it.
 $KnownOldStartSha256 = @(
+    # 0.61/0.62 protected launcher: normal app updates leave this stable file in place.
+    'ba5c48ebae2dec33a4da3ee8b644f3e1f99322eb77a23a16ddb675d23b9eb5c7',
+    '34529f95471c044bf199929cc24523f201f71588e066b74616e416523042770d', # Windows package CRLF
     'ca8b0cc1e38d4dcc40436f0744436e3c65bcc904cd894c2c263f3eaff02d53d1',
-    'b58de9707250d4657d199025b75a1e3c50c315272362c1fe593470b2a163ec20' # Windows package CRLF
+    'b58de9707250d4657d199025b75a1e3c50c315272362c1fe593470b2a163ec20', # Windows package CRLF
+    '837c25b9c4b4c5fb30d7f2f6d6081ed8daa4f0bfcbe2aeb31cddca9ddeb24b39', # 3.12.15 LF
+    'e3070fbc412577aff121d8a8aff33bb0bd15c790fce205580926569299de7c37' # 3.12.15 CRLF
 )
 
 # This is the canonical launcher produced by replacing only the host selector
-# in the HEAD file with the managed CPython 3.12.15 selector.  Keep this list
+# in the HEAD file with the managed CPython 3.12.16 selector.  Keep this list
 # fixed: TemplatePath is an input location, not an authorization boundary.
 $KnownNewStartSha256 = @(
-    '837c25b9c4b4c5fb30d7f2f6d6081ed8daa4f0bfcbe2aeb31cddca9ddeb24b39',
-    'e3070fbc412577aff121d8a8aff33bb0bd15c790fce205580926569299de7c37' # Windows package CRLF
+    '3bafb0efb475fdd9bd9e686739a461018c1612dc092a356b9bf8a9ed2538684a', # 3.12.16 LF
+    '184427c65309ebc1f45b2d2a2c5f71ee2ec1e70cb40c458a35449c1b06705241' # 3.12.16 CRLF
 )
 
 function Get-NormalizedPath {
@@ -160,8 +165,8 @@ function Assert-CanonicalTemplate {
     if ($text -match '(?i)robocopy' -or $text -match '(?i)uv\s+sync') {
         throw '新しいStart.batに旧式更新または直接依存同期が含まれています。'
     }
-    if ($text -notmatch '(?i)--no-project\s+--managed-python\s+--python\s+cpython@3\.12\.15') {
-        throw '新しいStart.batがmanaged CPython 3.12.15を固定していません。'
+    if ($text -notmatch '(?i)--no-project\s+--managed-python\s+--python\s+cpython@3\.12\.16') {
+        throw '新しいStart.batがmanaged CPython 3.12.16を固定していません。'
     }
     if ($text -notmatch '(?i)update_host\.supervisor') {
         throw '新しいStart.batが保護hostを起動しません。'
@@ -330,7 +335,7 @@ function Invoke-Refresh {
         Assert-NoUpdateBlockers -Root $rootPath
         Assert-AppLockClear -Root $rootPath
         Assert-TargetProcessesStopped -Root $rootPath
-        Write-Host '[Nexus Ark] protected Start.batは既にmanaged CPython 3.12.15です。'
+        Write-Host '[Nexus Ark] protected Start.batは既にmanaged CPython 3.12.16です。'
         return
     }
     if ($KnownOldStartSha256 -notcontains $currentSha) {

@@ -1,11 +1,12 @@
 ﻿<#
 Nexus Ark: prepare an existing Windows installation for the normal updater.
 
-This GUI does not copy the application or change update_url.  After the user
-confirms shutdown and a whole-installation backup, it prepares uv/Python and
-repairs only a recognized stable host and launcher.  The dedicated host helper
-keeps verified backups and supports resuming an interrupted host exchange.
-Only a fully verified installation is started through its own Start.bat.
+After shutdown and backup confirmation, older installations are updated by an
+independent, hash-pinned environment without launching the old app. TUF-verified
+app, Python environment and runtime are prepared beside the original root.
+Already-secure installations can retain the host/launcher maintenance path.
+update_url is preserved. Only a verified installation is started through its
+own Start.bat; interrupted work and backups are retained for recovery.
 
 The script is normally run from app/release in a complete package.  Internal
 parameters on the functions below exist for isolated tests after dot-sourcing;
@@ -18,6 +19,7 @@ Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 $script:IsDotSourced = ($MyInvocation.InvocationName -eq '.')
 $script:PreparationProgress = $null
+. (Join-Path $PSScriptRoot 'InvokeLegacySecureBootstrap.ps1')
 
 function Open-PreparationProgress {
     param([Parameter(Mandatory = $true)][string]$TargetRoot)
@@ -483,7 +485,7 @@ function Show-PreparationMessage {
 function Select-TargetRoot {
     Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
     $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-    $dialog.Description = '更新する既存のNexus Arkフォルダーを選択してください。'
+    $dialog.Description = '今までのNexus Arkフォルダーを選択。途中終了で見つからない場合は、隣の「.<元の名前>.nexus-secure-update」を選んでください。'
     $dialog.ShowNewFolderButton = $false
     try {
         if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
@@ -504,9 +506,9 @@ function Confirm-BackupAndShutdown {
 選択したNexus Arkを完全に終了し、起動中の更新処理がないことを確認してください。
 また、選択したフォルダー全体のバックアップを別の場所へ取得済みであることを確認してください。
 
-「はい」を押すと、更新用ツールとPythonを確認・準備し、既知の更新プログラムと起動設定を照合して、必要な場合はバックアップを残して更新します。
+「はい」を押すと、署名済み更新や更新用ツールを確認し、必要な場合は会話・設定を保管して更新します。
 完了後、今までのフォルダーのStart.batから起動します。
-このツールはフォルダー全体のバックアップを自動作成しません。会話や個人設定を手作業で移す必要はありません。
+このツールは作業前の全体バックアップを代わりに作成するものではありません。会話や個人設定を手作業で移す必要はありません。
 "@
     $result = Show-PreparationMessage -Text $message -Kind Warning -Buttons YesNo
     return ($result -eq [System.Windows.Forms.DialogResult]::Yes)
@@ -620,10 +622,31 @@ function Invoke-SecureHostMaintenance {
         $outputText = $outputTask.GetAwaiter().GetResult()
         $errorText = $errorTask.GetAwaiter().GetResult()
         if ($process.ExitCode -ne 0) {
-            throw ('更新hostの安全な準備を確認できません。起動せず、既存フォルダーとbackupを残してください。' + "`r`n" + $errorText)
+            # Consume only the bounded public failure contract, never raw
+            # stderr/internal exceptions that could disclose paths or tokens.
+            $safeReasons = @{
+                'start-hash-mismatch' = 'Start.batが対応する正規ファイルと一致しません。上書きやlock削除をせず、診断結果をお知らせください。'
+                'process-running' = 'Nexus Arkまたは起動処理を検出しました。黒い起動ウィンドウを含め、完全に終了してから再試行してください。'
+                'process-unknown' = '実行中プロセスの状態を安全に確認できません。lockを削除せず、診断結果をお知らせください。'
+                'app-lock-active' = 'アプリのlockが実行中の本体を示しています。完全に終了してから再試行してください。'
+                'app-lock-invalid' = 'アプリのlockの形式・状態を安全に確認できません。削除せず、診断結果をお知らせください。'
+                'repair-lock-active' = '別の準備処理、または未解決の修復lockがあります。ほかの準備ツールを閉じ、続く場合は診断結果をお知らせください。'
+                'pending-update' = '未完了の更新作業が残っています。既存フォルダーとbackupを残して、診断結果をお知らせください。'
+                'receipt-or-recovery' = '更新hostの復旧記録を安全に確認できません。既存フォルダーとbackupを残して、診断結果をお知らせください。'
+                'inventory-or-path' = '必要な更新ファイルまたはフォルダー構成を安全に確認できません。診断結果をお知らせください。'
+                'validation' = '更新hostの安全確認を完了できません。診断結果をお知らせください。'
+            }
+            $kind = 'validation'
+            try {
+                $failure = $outputText | ConvertFrom-Json -ErrorAction Stop
+                if ([string]$failure.state -eq 'blocked' -and $safeReasons.ContainsKey([string]$failure.failure_kind)) {
+                    $kind = [string]$failure.failure_kind
+                }
+            } catch { }
+            throw ('更新の準備を安全に完了できないため、Nexus Arkを起動していません。' + "`r`n" + $safeReasons[$kind] + "`r`n確認コード: " + $kind)
         }
         $result = $outputText | ConvertFrom-Json
-        if ([string]$result.state -notin @('legacy', 'known_old', 'known_new', 'repair_pending')) {
+        if ([string]$result.state -notin @('legacy', 'known_old', 'known_old8', 'known_new', 'repair_pending')) {
             throw '更新host準備の結果を検証できません。'
         }
         if (-not $InspectOnly -and [string]$result.state -notin @('legacy', 'known_new')) {
@@ -705,23 +728,95 @@ function Enter-PreparationMutex {
     return $mutex
 }
 
+function Resolve-LegacyBootstrapSelection {
+    param([Parameter(Mandatory=$true)][string]$Path)
+    $full = Get-NormalizedPath $Path
+    $candidate = $full
+    if ([IO.Path]::GetFileName($candidate) -eq 'previous') {
+        $parent = [IO.Path]::GetDirectoryName($candidate)
+        if ([IO.Path]::GetFileName($parent) -match '^\.(.+)\.nexus-secure-update$') { $candidate = $parent }
+    }
+    $name = [IO.Path]::GetFileName($candidate)
+    if ($name -match '^\.(.+)\.nexus-secure-update$') {
+        $originalName = $Matches[1]
+        if ($originalName -in @('.', '..')) { throw '初回更新の復旧フォルダー名が不正です。' }
+        Assert-RegularDirectory $candidate '初回更新の復旧フォルダー' | Out-Null
+        Assert-RegularFile (Join-Path $candidate 'receipt.json') '初回更新の復旧記録' | Out-Null
+        return (Get-NormalizedPath (Join-Path ([IO.Path]::GetDirectoryName($candidate)) $originalName))
+    }
+    return $full
+}
+
+function Get-LegacyBootstrapWorkspace {
+    param([Parameter(Mandatory=$true)][string]$Root)
+    return (Join-Path ([IO.Path]::GetDirectoryName($Root)) ('.' + [IO.Path]::GetFileName($Root) + '.nexus-secure-update'))
+}
+
+function Test-NeedsIndependentSecureUpdate {
+    param([Parameter(Mandatory=$true)][hashtable]$Target)
+    if ($Target.ContainsKey('Recovery') -and $Target.Recovery) { return $true }
+    # この版より前は既知protected Startでも旧本体のCA経路を起動しない。
+    return ([version]$Target.Version -lt [version]'0.5.0.75')
+}
+
 function Invoke-PreparedTarget {
     param(
         [Parameter(Mandatory = $true)][hashtable]$Source,
         [Parameter(Mandatory = $true)][string]$TargetRoot
     )
 
+    $TargetRoot = Resolve-LegacyBootstrapSelection -Path $TargetRoot
     if (Test-SameOrNestedPath $Source.Root $TargetRoot) {
         throw '配布パッケージと選択した既存フォルダーが同一または内包関係にあるため停止します。'
     }
     $mutex = Enter-PreparationMutex $TargetRoot
     try {
         Set-PreparationStatus -Text '選択したフォルダーと、Nexus Arkが終了していることを確認しています…'
-        $target = Assert-TargetRoot -Root $TargetRoot -Source $Source
+        $workspace = Get-LegacyBootstrapWorkspace -Root $TargetRoot
+        $hasBootstrapWorkspace = Test-SafePathOrAbsent $workspace
+        if (-not (Test-SafePathOrAbsent $TargetRoot) -and $hasBootstrapWorkspace) {
+            Assert-RegularFile (Join-Path $workspace 'receipt.json') '初回更新の復旧記録' | Out-Null
+            Assert-RegularDirectory (Join-Path $workspace 'previous') '初回更新の保全フォルダー' | Out-Null
+            $target = @{ Root=$TargetRoot; App=(Join-Path $TargetRoot 'app'); Start=(Join-Path $TargetRoot 'Start.bat'); Version='recovery'; Recovery=$true }
+        } else {
+            $target = Assert-TargetRoot -Root $TargetRoot -Source $Source
+        }
         Set-PreparationStatus -Text '停止とバックアップの確認画面で、内容をご確認ください。'
         if (-not (Confirm-BackupAndShutdown -TargetRoot $target.Root)) {
             Set-PreparationStatus -Text '準備を中止しました。Nexus Arkは起動していません。'
             return $false
+        }
+        $isLegacy = $target.ContainsKey('Recovery') -and $target.Recovery
+        if (-not $isLegacy) {
+            $legacyStart = Get-Content -LiteralPath $target.Start -Raw -Encoding UTF8
+            $isLegacy = $legacyStart -match '(?i)\brobocopy\b'
+        }
+        $needsSecureUpdate = $isLegacy -or (Test-NeedsIndependentSecureUpdate $target)
+        $pendingBootstrap = $hasBootstrapWorkspace
+        if ($hasBootstrapWorkspace -and -not $needsSecureUpdate) {
+            $receiptPath = Join-Path $workspace 'receipt.json'
+            $receiptFile = Assert-RegularFile $receiptPath '初回更新の記録'
+            if ($receiptFile.Length -gt 65536) { throw '初回更新の記録が不正です。' }
+            $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            # 通常更新後も初回backupは保持する。完了済みの古い取得targetへ
+            # 再照合して、新しい正規更新を誤って復旧扱いにしない。
+            if ([string]$receipt.state -eq 'committed') { $pendingBootstrap = $false }
+        }
+        if ($needsSecureUpdate -or $pendingBootstrap) {
+            Set-PreparationStatus -Text '旧アプリを起動せず、安全な初回更新を準備しています…'
+            $uv = Invoke-UvRepair $Source
+            $bootstrap = Invoke-LegacySecureBootstrap -Source $Source -Target $target -UvExecutable $uv
+            # Completeだけを根拠に旧Startへfallbackしない。切替後の保護hostと
+            # Startをもう一度通常のread-only preflightで照合する。
+            $target = Assert-TargetRoot -Root $TargetRoot -Source $Source
+            $newStart = Get-Content -LiteralPath $target.Start -Raw -Encoding UTF8
+            if ($newStart -notmatch 'update_host\.supervisor' -or $newStart -match '(?i)\brobocopy\b') {
+                throw '初回更新の切り替えを確認できません。旧版を起動せず停止しました。確認コード: legacy-bootstrap-post-check'
+            }
+            Set-PreparationStatus -Text '安全な更新が完了しました。今までのフォルダーから新版を起動しています…'
+            Start-SelectedRoot $target | Out-Null
+            Show-PreparationMessage -Text ("安全な更新が完了しました。今までのフォルダーから新版の起動を開始しました。`r`n`r`n通常どおりNexus Arkをご利用ください。更新・移行操作をもう一度行う必要はありません。`r`n旧フォルダー全体は、隣の初回更新フォルダー内のpreviousに保管しています。") -Kind Information -Buttons OK | Out-Null
+            return $true
         }
         Set-PreparationStatus -Text '更新用ツールと修正済みPythonを確認・準備しています。取得が必要な場合は数分かかることがあります。'
         Invoke-UvRepair $Source | Out-Null
@@ -756,6 +851,26 @@ function Invoke-PreparedTarget {
     }
 }
 
+function Get-PreparationErrorText {
+    param([Parameter(Mandatory=$true)][string]$Message)
+    if ($Message -notmatch '^\[legacy-bootstrap-([a-z0-9-]+)\]$') { return $Message }
+    $code = $Matches[1]
+    $reasons = @{
+        'secure-release-required' = '指定した更新先には、安全な初回更新に対応した新版がまだありません。対応する配布物の案内をお待ちください。'
+        'insufficient-space' = '新版とデータを準備する空き容量が足りません。空きを確保してから再実行してください。'
+        'process-or-lock' = '本体の実行状態またはlockを安全に確認できません。起動ウィンドウを含めて完全に終了し、続く場合は診断結果をお知らせください。'
+        'data-changed' = '準備中に会話や設定が変わりました。本体を終了したまま再実行してください。'
+        'trial-port-unavailable' = '起動確認に使うポートが使用中です。既存の本体が完全に終了しているか確認してください。'
+        'trial-exited' = '新版が起動確認を完了できませんでした。確認コードをお知らせください。'
+        'trial-timeout' = '新版の起動確認が時間内に完了しませんでした。確認コードをお知らせください。'
+        'signature-verification-failed' = '更新の署名または有効期限を確認できません。安全のため停止しています。'
+        'download-verification-failed' = '更新ファイルを完全に取得・検証できません。通信を確認してから再実行してください。'
+    }
+    $reason = '安全確認を完了できませんでした。確認コードをお知らせください。'
+    if ($reasons.ContainsKey($code)) { $reason = $reasons[$code] }
+    return ('安全な初回更新を完了できないため、本体を自動起動していません。' + "`r`n" + $reason + "`r`n既存フォルダー・backup・隣の復旧フォルダーを削除しないでください。`r`n確認コード: legacy-bootstrap-" + $code)
+}
+
 function Invoke-PreparationMain {
     param([string]$PackageRoot = '')
 
@@ -780,7 +895,7 @@ function Invoke-PreparationMain {
                 $script:PreparationProgress.NoteLabel.Text = "準備ツールはここで停止しています。表示された案内をご確認ください。`r`n準備が完了するまでは、本体の自動更新へ進まないでください。"
             }
             Set-PreparationStatus -Text '準備を完了できませんでした。表示された案内をご確認ください。'
-            Show-PreparationMessage -Text $_.Exception.Message -Kind Error -Buttons OK | Out-Null
+            Show-PreparationMessage -Text (Get-PreparationErrorText -Message $_.Exception.Message) -Kind Error -Buttons OK | Out-Null
         }
         catch {
             Write-Error $_.Exception.Message

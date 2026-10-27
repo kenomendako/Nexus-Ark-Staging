@@ -4,7 +4,7 @@ version = "0.2.0"
 description = "Nexus Ark: AI Persona Interaction System"
 authors = [{ name = "Kenomendako", email = "kenomendako@example.com" }]
 readme = "README.md"
-requires-python = ">=3.12.15, <3.13"
+requires-python = ">=3.12.16, <3.13"
 dependencies = [
     # --- Core Frameworks ---
     # Gradio 6.16.0 fixes the Svelte tab-switch update loop (upstream #13240).
@@ -40,7 +40,7 @@ dependencies = [
     "schedule==1.2.2",
     "requests==2.32.5",
     # eMudhra/emSign CA incident: keep the restored safe root bundle.
-    "certifi==2026.10.19",
+    "certifi==2026.10.23",
     # CVE-2026-111497: HTTP clients may automatically decode br responses.
     "brotli>=1.2.1; platform_python_implementation == 'CPython'",
     "brotlicffi>=1.2.1.0; platform_python_implementation != 'CPython'",
