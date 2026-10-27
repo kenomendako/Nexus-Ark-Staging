@@ -27,12 +27,13 @@ if (-not $script:IsDotSourced) {
 
 # 89d5c9eb stable host: seven files.  5746fd60 adds windows_processes.py and
 # changes the transaction/supervisor files.  The latter is retained as an
-# approved *previous* eight-file generation because a package may have
-# already completed that migration before the next host refresh.  The source
-# is not an authorization boundary by itself: every complete generation is
-# pinned below and receipts must carry one of these exact maps.
-# Receipts from the prior helper may label the old8 map as ``known_new``;
-# they are accepted only when their complete ``new_files`` map proves old8.
+# approved previous eight-file generation.  The shipped 0.77 host is retained
+# as known_077 while the current source is the next known_new generation.
+# The source is not an authorization boundary by itself: every complete
+# generation is pinned below and receipts must carry one of these exact maps.
+# Receipts from prior helpers may label known_old8 or known_077 as
+# ``known_new``; they are accepted only when their complete map proves that
+# exact prior generation.
 $script:KnownOldHostSha256 = [ordered]@{
     '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
     'contracts.py' = '4018fe870273e8fa38b5e07b60bbb49d51edd2feaec38f22e087d528f3fa115f'
@@ -52,11 +53,21 @@ $script:KnownOld8HostSha256 = [ordered]@{
     'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
     'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
 }
-$script:KnownNewHostSha256 = [ordered]@{
+$script:Known077HostSha256 = [ordered]@{
     '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
     'contracts.py' = '958c0c669f716b4eeb04083a1ba39eba913d90bfd7baae7b9c9a15bad848af20'
     'runtime.py' = '38490c97b317a73ae029c7b6e9b8765625a8e9229388963130cf955334b303d3'
     'runtime_archive.py' = 'd4484f97a0d71531f9ac046b36d98bb47f092149335b559e36158a2493922b25'
+    'supervisor.py' = '91f59ac334a8c4d9955605e147c7519d3020992ebd9bf00c069bbfbe13b07b2e'
+    'transaction.py' = '1a06f6ca858b040cd877de5bf8f31ae00a003486dbd9de56ea22dc5fabae7fe7'
+    'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
+    'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
+}
+$script:KnownNewHostSha256 = [ordered]@{
+    '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
+    'contracts.py' = '958c0c669f716b4eeb04083a1ba39eba913d90bfd7baae7b9c9a15bad848af20'
+    'runtime.py' = '3f446f01094438b75974a60215e5d670f90175d83bc2f62a0fb9aff45781245b'
+    'runtime_archive.py' = '15b6fd5835efebcb4a02210c7f7ebeffd52a86d4776dfeca109c9e068fb7dbcc'
     'supervisor.py' = '91f59ac334a8c4d9955605e147c7519d3020992ebd9bf00c069bbfbe13b07b2e'
     'transaction.py' = '1a06f6ca858b040cd877de5bf8f31ae00a003486dbd9de56ea22dc5fabae7fe7'
     'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
@@ -72,8 +83,11 @@ function Get-KnownHostGeneration {
         'known_old8' {
             return [ordered]@{ state = 'known_old8'; rank = 1; map = $script:KnownOld8HostSha256 }
         }
+        'known_077' {
+            return [ordered]@{ state = 'known_077'; rank = 2; map = $script:Known077HostSha256 }
+        }
         'known_new' {
-            return [ordered]@{ state = 'known_new'; rank = 2; map = $script:KnownNewHostSha256 }
+            return [ordered]@{ state = 'known_new'; rank = 3; map = $script:KnownNewHostSha256 }
         }
         default { throw 'host世代が許可済み一覧にありません。' }
     }
@@ -376,7 +390,7 @@ function Get-HostState {
     if (-not $item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
         throw 'updater/currentが通常のdirectoryではありません。'
     }
-    foreach ($generation in @('known_old', 'known_old8', 'known_new')) {
+    foreach ($generation in @('known_old', 'known_old8', 'known_077', 'known_new')) {
         $definition = Get-KnownHostGeneration -State $generation
         try {
             $verified = Compare-CurrentInventory -Root $path -Expected $definition.map -ExpectedState $definition.state
@@ -396,7 +410,7 @@ function Assert-ApprovedSourceHost {
     if ($leaf -ine 'current' -or (Split-Path -Leaf $parent) -ine 'updater') {
         throw 'sourceはdistribution/updater/currentでなければなりません。'
     }
-    foreach ($generation in @('known_old', 'known_old8', 'known_new')) {
+    foreach ($generation in @('known_old', 'known_old8', 'known_077', 'known_new')) {
         $definition = Get-KnownHostGeneration -State $generation
         try {
             $verified = Compare-CurrentInventory -Root $source -Expected $definition.map -ExpectedState $definition.state
@@ -964,16 +978,17 @@ function Get-ReceiptGenerationDefinition {
     )
     $stateName = if ($Role -eq 'old') { [string]$Receipt.old_state } else { [string]$Receipt.new_state }
     $files = if ($Role -eq 'old') { $Receipt.old_files } else { $Receipt.new_files }
-    foreach ($candidateName in @('known_old', 'known_old8', 'known_new')) {
+    foreach ($candidateName in @('known_old', 'known_old8', 'known_077', 'known_new')) {
         $candidate = Get-KnownHostGeneration -State $candidateName
         try { Assert-ReceiptFilesExact -Files $files -Expected $candidate.map -Label ('receipt {0}_files' -f $Role) }
         catch { continue }
         if ($stateName -eq $candidate.state) { return $candidate }
-        # Receipts emitted by the previous helper called the old8 host
-        # ``known_new``.  The complete old8 map is the compatibility proof;
-        # no state-only or partial-map fallback is accepted.
-        if ($Role -eq 'new' -and $stateName -eq 'known_new' -and $candidate.state -eq 'known_old8') {
-            return [ordered]@{ state = 'known_old8'; rank = $candidate.rank; map = $candidate.map; legacy_label = $true }
+        # Receipts emitted by previous helpers called old8 and 0.77
+        # ``known_new``.  The complete map is the compatibility proof; no
+        # state-only or partial-map fallback is accepted.
+        if ($Role -eq 'new' -and $stateName -eq 'known_new' -and
+            $candidate.state -in @('known_old8', 'known_077')) {
+            return [ordered]@{ state = $candidate.state; rank = $candidate.rank; map = $candidate.map; legacy_label = $true }
         }
         throw ('receiptの{0}_stateと{0}_filesが一致しません。' -f $Role)
     }
@@ -1117,7 +1132,7 @@ function Invoke-SecureUpdateHostRepair {
     }
     $source = Assert-ApprovedSourceHost -SourceHostPath $SourceHostPath
     $sourceDefinition = Get-KnownHostGeneration -State ([string]$source.inventory.state)
-    $assessmentDefinition = if ($assessment.state -in @('known_old', 'known_old8', 'known_new')) {
+    $assessmentDefinition = if ($assessment.state -in @('known_old', 'known_old8', 'known_077', 'known_new')) {
         Get-KnownHostGeneration -State ([string]$assessment.state)
     }
     else { $null }
@@ -1179,7 +1194,7 @@ function Invoke-SecureUpdateHostRepair {
         }
         return $recoveryResult
     }
-    if ($assessment.state -in @('known_old', 'known_old8', 'known_new')) {
+    if ($assessment.state -in @('known_old', 'known_old8', 'known_077', 'known_new')) {
         if ($sourceDefinition.rank -lt $assessmentDefinition.rank) {
             throw 'sourceが現在hostより古い世代です。'
         }
@@ -1205,7 +1220,7 @@ function Invoke-SecureUpdateHostRepair {
         Assert-SecureRepairLeaseAvailable -Root $root
         return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownNewHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。変更しません。'
     }
-    if ($assessment.state -notin @('known_old', 'known_old8')) { throw '修復対象hostが既知旧版ではありません。' }
+    if ($assessment.state -notin @('known_old', 'known_old8', 'known_077')) { throw '修復対象hostが既知旧版ではありません。' }
     if ($InspectOnly) {
         return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $assessmentDefinition.map['supervisor.py'] -NewSha256 $sourceDefinition.map['supervisor.py'] -Message '既知の旧hostです。修復可能です。'
     }

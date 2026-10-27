@@ -1,7 +1,7 @@
 {
   "components": {
     "app": {
-      "version": "0.5.0.77"
+      "version": "0.5.0.80"
     },
     "python_env": {
       "declared_min_python_version": "3.12.16",
@@ -529,8 +529,8 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/00_getting_started.md",
-      "sha256": "c0cb64422e5919ec6948658e3e528da7b72a2fa608604f318472175ce7b59f47",
-      "size": 10479
+      "sha256": "6fb3b4108d4abc7f4ce348aee853c6b6dcc54dce360ee76773337abe0c79c165",
+      "size": 10911
     },
     {
       "kind": "owned",
@@ -607,8 +607,8 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/11_troubleshooting.md",
-      "sha256": "92007e82e8e65778219ad0736f545b89d8ee8fd04b73193ecc5e49c21c8803cc",
-      "size": 24447
+      "sha256": "c856edc37214ae32cf3af16f37663d0e4cce59aec97c4cbb0b8c61e2c083844a",
+      "size": 25600
     },
     {
       "kind": "owned",
@@ -637,19 +637,19 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.faiss",
-      "sha256": "af8c7185b3c88f949f6f4012302f3f7310d1be5398017172474771804de600d9",
-      "size": 6610989
+      "sha256": "f473582e2dc38b23265b740cd9a316139a31c6d16033503585e7f1b30f93e161",
+      "size": 6635565
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.pkl",
-      "sha256": "441e408b5cb2e9e169fbc45eef55cd05ca95063614a3b076dbb20abe8fd8ef4f",
-      "size": 346511
+      "sha256": "c142081175463662c81182bb4a0b84c60dda2c7b3e94c1cd5dfc4c42a03be681",
+      "size": 348307
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/model_info.json",
-      "sha256": "cb316e269419ac404c69856da6d6948b10a7b575aa066db1e5f5343bd4d48825",
+      "sha256": "22d0ea9a60aa2716584b14639777fe908ed2e126c3d1abd787a2e0594d554e38",
       "size": 175
     },
     {
@@ -1333,8 +1333,8 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/00_getting_started.md",
-      "sha256": "c0cb64422e5919ec6948658e3e528da7b72a2fa608604f318472175ce7b59f47",
-      "size": 10479
+      "sha256": "6fb3b4108d4abc7f4ce348aee853c6b6dcc54dce360ee76773337abe0c79c165",
+      "size": 10911
     },
     {
       "kind": "owned",
@@ -1411,8 +1411,8 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/11_troubleshooting.md",
-      "sha256": "92007e82e8e65778219ad0736f545b89d8ee8fd04b73193ecc5e49c21c8803cc",
-      "size": 24447
+      "sha256": "c856edc37214ae32cf3af16f37663d0e4cce59aec97c4cbb0b8c61e2c083844a",
+      "size": 25600
     },
     {
       "kind": "owned",
@@ -1573,14 +1573,14 @@
     {
       "kind": "owned",
       "path": "legacy_bootstrap/installer.py",
-      "sha256": "606067a1f851ee3eabb076d291b491af2025d74344cc8fb7494a789a8f842360",
-      "size": 19388
+      "sha256": "a80a3983ce66afa90f0e24c64bb123731ba1484a6a3c18f6f1fdf5ca80e559d3",
+      "size": 19442
     },
     {
       "kind": "owned",
       "path": "legacy_bootstrap/transaction.py",
-      "sha256": "639dbd0d85b1960b2607e7f7268d6c35957757a76261cf786c100b9c53873450",
-      "size": 30487
+      "sha256": "b3813fcd00a109dcfc5b0875b5e90b300a7a1519e4cc5e874c43711917b961cd",
+      "size": 30736
     },
     {
       "kind": "owned",
@@ -1909,8 +1909,8 @@
     {
       "kind": "owned",
       "path": "release/PrepareExistingUpdate.ps1",
-      "sha256": "a424108bc58abbb8670078d4299cd1cf3120b12ffc11d767e5c8438f1e43d242",
-      "size": 46460
+      "sha256": "cb084eb58b6039fb2cf11cc6ccb13cb0d4fe3349f743864c7ce95353cc485d11",
+      "size": 46473
     },
     {
       "kind": "owned",
@@ -1921,8 +1921,8 @@
     {
       "kind": "owned",
       "path": "release/RepairSecureUpdateHost.ps1",
-      "sha256": "e8c5fd1c37608ca2b2f605ceeffa54b73b0780d13449fbc013fc15dea193df45",
-      "size": 72816
+      "sha256": "8198816ad9f3a25c6d565f18408fe5cfdbaeb93bcc3473f31865cba4383fd3e9",
+      "size": 73838
     },
     {
       "kind": "owned",
@@ -2101,8 +2101,8 @@
     {
       "kind": "owned",
       "path": "site/guide/00_getting_started.html",
-      "sha256": "a714b957ecfa2f7e0549cc3169864599774fa57445fb5da6db29ce7011301343",
-      "size": 13857
+      "sha256": "bec4bbc1ef0da1e662cced17e9e3b1f71364ef516322ab35129e1c0277327f0a",
+      "size": 14306
     },
     {
       "kind": "owned",
@@ -2179,8 +2179,8 @@
     {
       "kind": "owned",
       "path": "site/guide/11_troubleshooting.html",
-      "sha256": "d1e4f0ff2eb4926791095153a5cfd6e89b2f4a8057f340c79e87770397b51c26",
-      "size": 28641
+      "sha256": "6060700cb6045126583cb1c4230556915ae1565024ed81f9e1bca35ac0eca120",
+      "size": 29828
     },
     {
       "kind": "owned",
@@ -2713,14 +2713,14 @@
     {
       "kind": "owned",
       "path": "update_host/runtime.py",
-      "sha256": "38490c97b317a73ae029c7b6e9b8765625a8e9229388963130cf955334b303d3",
-      "size": 40528
+      "sha256": "3f446f01094438b75974a60215e5d670f90175d83bc2f62a0fb9aff45781245b",
+      "size": 43126
     },
     {
       "kind": "owned",
       "path": "update_host/runtime_archive.py",
-      "sha256": "d4484f97a0d71531f9ac046b36d98bb47f092149335b559e36158a2493922b25",
-      "size": 23295
+      "sha256": "15b6fd5835efebcb4a02210c7f7ebeffd52a86d4776dfeca109c9e068fb7dbcc",
+      "size": 24559
     },
     {
       "kind": "owned",
@@ -2779,7 +2779,7 @@
     {
       "kind": "owned",
       "path": "version.json",
-      "sha256": "c225392849abcc6e58bbde3680686e0367870ee8ef6202717a5f42f95faa347f",
+      "sha256": "c232081e510917eb6ef1645bccd544567032227d896cd73f0a821a5b7d7e55bb",
       "size": 246
     },
     {
@@ -2812,7 +2812,7 @@
     "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
     "schema_version": 1
   },
-  "release_version": "0.5.0.77",
+  "release_version": "0.5.0.80",
   "required_entries": [
     "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
     "cloud/lite-relay/README.md",
@@ -2866,5 +2866,5 @@
     "cpu": "x86_64",
     "platform": "windows"
   },
-  "total_bytes": 27723473
+  "total_bytes": 27759851
 }

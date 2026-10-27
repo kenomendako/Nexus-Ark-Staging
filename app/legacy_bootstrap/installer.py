@@ -21,7 +21,7 @@ from typing import Callable, Mapping
 
 from packaging.version import Version
 from update_host.contracts import classify_release_path, is_generated_release_state, validate_release_tree
-from update_host.runtime import validate_bound_runtime
+from update_host.runtime import validate_bound_runtime, _runtime_io_path
 from update_host.supervisor import UpdateSupervisor
 from update_host.trial import validate_trial_marker
 
@@ -373,7 +373,7 @@ def install(root: Path, source_root: Path, uv: Path, *, default_update_url: str,
         runtime_source = workspace / 'download' / runtime_source
         if not runtime_source.absolute().is_relative_to((workspace / 'download').absolute()):
             raise BootstrapError('unsafe-path')
-        shutil.copytree(runtime_source, next_root / 'runtime')
+        shutil.copytree(_runtime_io_path(runtime_source), _runtime_io_path(next_root / 'runtime'))
     progress('copy')
     snapshot = copy_user_data(root, next_root)
     shutil.copy2(app / 'release/update_host_bridge/Start.bat', next_root / 'Start.bat')

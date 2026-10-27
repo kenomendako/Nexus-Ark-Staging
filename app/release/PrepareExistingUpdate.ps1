@@ -646,7 +646,7 @@ function Invoke-SecureHostMaintenance {
             throw ('更新の準備を安全に完了できないため、Nexus Arkを起動していません。' + "`r`n" + $safeReasons[$kind] + "`r`n確認コード: " + $kind)
         }
         $result = $outputText | ConvertFrom-Json
-        if ([string]$result.state -notin @('legacy', 'known_old', 'known_old8', 'known_new', 'repair_pending')) {
+        if ([string]$result.state -notin @('legacy', 'known_old', 'known_old8', 'known_077', 'known_new', 'repair_pending')) {
             throw '更新host準備の結果を検証できません。'
         }
         if (-not $InspectOnly -and [string]$result.state -notin @('legacy', 'known_new')) {

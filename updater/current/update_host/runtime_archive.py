@@ -25,6 +25,8 @@ from typing import Any, BinaryIO, Mapping
 from .contracts import _windows_path_key
 from .runtime import (
     RUNTIME_MANIFEST_FILENAME,
+    _extended_windows_path as _runtime_extended_windows_path,
+    _runtime_io_path,
     RUNTIME_MAX_BYTES,
     RUNTIME_MAX_FILES,
     _assert_runtime_file_policy,
@@ -58,6 +60,33 @@ def _is_lexists(path: Path) -> bool:
     """``Path.exists`` が見落とすdangling symlinkも含めて確認する。"""
 
     return os.path.lexists(os.fspath(path))
+
+
+def _extended_windows_path(value: str) -> str:
+    try:
+        return _runtime_extended_windows_path(value)
+    except ValueError:
+        raise _error("runtime filesystem path is unsafe") from None
+
+
+def _io_path(value: str | os.PathLike[str]) -> Path:
+    try:
+        return _runtime_io_path(value)
+    except ValueError:
+        raise _error("runtime filesystem path is unsafe") from None
+
+
+def _is_reparse_point(path: Path) -> bool:
+    info = path.lstat()
+    return path.is_symlink() or bool(getattr(info, "st_file_attributes", 0) & 0x400)
+
+
+def _assert_no_reparse_ancestors(path: Path, *, stop: Path | None = None) -> None:
+    for current in (path, *path.parents):
+        if _is_lexists(current) and _is_reparse_point(current):
+            raise _error("runtime staging destination path is invalid")
+        if current == stop:
+            break
 
 
 def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -299,7 +328,7 @@ def _scan_archive(archive_path: Path) -> tuple[Mapping[str, Any], dict[str, dict
 
 def _safe_destination(destination: str | os.PathLike[str]) -> tuple[Path, Path]:
     try:
-        target = Path(destination)
+        target = _io_path(destination)
     except (TypeError, ValueError):
         raise _error("runtime staging destination is invalid") from None
     if not str(target) or target.name in {"", ".", ".."}:
@@ -308,11 +337,13 @@ def _safe_destination(destination: str | os.PathLike[str]) -> tuple[Path, Path]:
         raise _error("runtime staging destination already exists")
     parent = target.parent
     try:
+        _assert_no_reparse_ancestors(parent)
         # The staging parent is created by the app updater on first use.  Do not
         # replace a parent symlink with a directory outside the intended area.
         if parent.exists() and parent.is_symlink():
             raise _error("runtime staging parent is invalid")
         parent.mkdir(parents=True, exist_ok=True)
+        _assert_no_reparse_ancestors(parent)
     except RuntimeArchiveError:
         raise
     except (OSError, ValueError):
@@ -324,10 +355,11 @@ def _safe_destination(destination: str | os.PathLike[str]) -> tuple[Path, Path]:
 
 def _validate_archive_file(archive: str | os.PathLike[str]) -> Path:
     try:
-        path = Path(archive)
+        path = _io_path(archive)
     except (TypeError, ValueError):
         raise _error("runtime archive is invalid") from None
     try:
+        _assert_no_reparse_ancestors(path)
         if path.is_symlink() or not path.is_file():
             raise _error("runtime archive is invalid")
         # A regular file is required; stat follows no symlink because of the
@@ -385,8 +417,9 @@ def _write_archive(
                         raise _error("runtime archive inventory changed")
                     if relative in written:
                         raise _error("runtime archive contains duplicate members")
+                    _assert_no_reparse_ancestors(target.parent, stop=temporary_root)
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    if target.parent.is_symlink() or target.exists() and not target.is_file():
+                    if _is_reparse_point(target.parent) or target.exists() and not target.is_file():
                         raise _error("runtime archive destination path is invalid")
                     stream = _member_stream(archive, info)
                     try:
@@ -428,6 +461,7 @@ def _write_archive(
                         raise _error("runtime archive member stream hash or size mismatch")
                     written.add(relative)
                 else:
+                    _assert_no_reparse_ancestors(target, stop=temporary_root)
                     if target.exists() and not target.is_dir():
                         raise _error("runtime archive destination path is invalid")
                     if target.is_symlink():
@@ -516,7 +550,7 @@ def extract_runtime_archive(
             raise _error("runtime staging destination cannot be committed") from None
         temporary_root = None
         _fsync_directory(parent)
-        return target
+        return Path(destination)
     except RuntimeArchiveError:
         raise
     except Exception:

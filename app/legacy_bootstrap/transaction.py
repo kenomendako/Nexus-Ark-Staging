@@ -24,6 +24,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from update_host.runtime import _runtime_io_path
+
 
 SCHEMA_VERSION = 1
 RECEIPT_NAME = "receipt.json"
@@ -345,13 +347,16 @@ def _assert_safe_tree(path: Path) -> None:
     if not os.path.lexists(path):
         raise TransactionError(f"required directory is missing: {path.name}")
     _assert_safe_ancestors(path)
-    info = os.lstat(path)
+    physical = _runtime_io_path(path)
+    info = os.lstat(physical)
     if _is_reparse_or_symlink(path, info) or not stat.S_ISDIR(info.st_mode):
         raise UnsafePathError(f"directory is not a normal directory: {path.name}")
     def _walk_error(error: OSError) -> None:
         raise UnsafePathError(f"cannot inspect tree entry: {error}") from error
 
-    for current, directories, files in os.walk(path, topdown=True, followlinks=False, onerror=_walk_error):
+    # Deep wheel files can exceed MAX_PATH even when the installation root
+    # itself is short. Keep receipt identities logical; extend only this I/O.
+    for current, directories, files in os.walk(physical, topdown=True, followlinks=False, onerror=_walk_error):
         current_path = Path(current)
         for name in [*directories, *files]:
             child = current_path / name

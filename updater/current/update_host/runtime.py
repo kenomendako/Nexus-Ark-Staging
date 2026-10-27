@@ -17,7 +17,7 @@ import os
 import re
 import stat
 import tempfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterable, Mapping
 
 from .contracts import _windows_path_key, _normalize_relative_path
@@ -144,6 +144,49 @@ _NATIVE_PACKAGE_PREFIXES = (
     "esbuild-",
     "sharp-",
 )
+
+
+def _extended_windows_path(value: str) -> str:
+    """検証済みhost pathのI/O表記だけを拡張する。device namespaceは許可しない。"""
+    raw = value.replace("/", "\\")
+    if raw.startswith("\\\\.\\"):
+        raise ValueError("runtime filesystem path is unsafe")
+    if raw.startswith("\\\\?\\"):
+        raw = raw[4:]
+        if raw[:4].casefold() == "unc\\":
+            raw = "\\\\" + raw[4:]
+    path = PureWindowsPath(raw)
+    if not path.is_absolute() or any(ord(char) < 32 for char in raw):
+        raise ValueError("runtime filesystem path is unsafe")
+    # Check before PureWindowsPath can collapse dot components. Extended paths
+    # must not reinterpret traversal, DOS names, streams or trailing dots.
+    if any(part in {".", ".."} for part in raw.split("\\")):
+        raise ValueError("runtime filesystem path is unsafe")
+    parts = list(path.parts[1:])
+    if path.drive.startswith("\\\\"):
+        parts += path.drive[2:].split("\\")
+        prefix = "\\\\?\\UNC\\" + str(path)[2:]
+    elif re.fullmatch(r"[A-Za-z]:", path.drive):
+        prefix = "\\\\?\\" + str(path)
+    else:
+        raise ValueError("runtime filesystem path is unsafe")
+    try:
+        for part in parts:
+            _windows_path_key(part)
+    except ValueError:
+        raise ValueError("runtime filesystem path is unsafe") from None
+    return prefix
+
+
+def _runtime_io_path(value: str | os.PathLike[str]) -> Path:
+    path = Path(value)
+    if os.name != "nt":
+        return path
+    # Refuse traversal before abspath normalizes it. The returned extended
+    # path is private to filesystem I/O, never an archive member or receipt.
+    if ".." in path.parts:
+        raise ValueError("runtime filesystem path is unsafe")
+    return Path(_extended_windows_path(os.path.abspath(path)))
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -532,12 +575,24 @@ def _validate_manifest_shape(
 
 
 def _iter_runtime_files(root: Path) -> Iterable[tuple[str, Path]]:
+    root = _runtime_io_path(root)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("runtime root must be a real directory")
+    for ancestor in (root, *root.parents):
+        info = ancestor.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise ValueError("runtime root must be a real directory")
     seen_windows_paths: dict[str, str] = {}
-    for path in sorted(root.rglob("*"), key=lambda item: item.as_posix()):
-        if path.is_symlink():
-            raise ValueError(f"runtime tree must not contain symlinks: {path.relative_to(root)}")
+    def walk(parent: Path):
+        for child in sorted(parent.iterdir(), key=lambda item: item.name):
+            info = child.lstat()
+            if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+                raise ValueError("runtime tree must not contain symlinks or reparse points")
+            yield child
+            if stat.S_ISDIR(info.st_mode):
+                yield from walk(child)
+
+    for path in walk(root):
         relative_path = path.relative_to(root)
         if any("\\" in part for part in relative_path.parts):
             raise ValueError(f"Windows-incompatible runtime file path: {relative_path}")
@@ -839,9 +894,13 @@ def write_runtime_manifest(
 
 
 def read_runtime_manifest(runtime_root: str | os.PathLike[str]) -> dict[str, Any]:
-    root = Path(runtime_root)
+    root = _runtime_io_path(runtime_root)
     if root.is_symlink() or not root.is_dir():
         raise ValueError("runtime root must be a real directory")
+    for ancestor in (root, *root.parents):
+        info = ancestor.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise ValueError("runtime root must be a real directory")
     try:
         manifest = json.loads((root / RUNTIME_MANIFEST_FILENAME).read_text(encoding="utf-8"))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -861,7 +920,7 @@ def validate_runtime_tree(
 ) -> dict[str, Any]:
     """展開済みruntime全体をmanifestと照合する。"""
 
-    root = Path(runtime_root)
+    root = _runtime_io_path(runtime_root)
     value = read_runtime_manifest(root) if manifest is None else dict(manifest)
     indexed = _validate_manifest_shape(
         value,
