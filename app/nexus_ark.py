@@ -8620,6 +8620,33 @@ try:
             outputs=[active_participants_state, session_status_display, participant_checkbox_group]
         )
 
+        deferred_scenery_state = gr.State(
+            value=ui_handlers.create_deferred_scenery_state(),
+            delete_callback=ui_handlers.close_deferred_scenery_state,
+        )
+        deferred_scenery_timer = gr.Timer(1.0, active=False)
+        deferred_scenery_timer.tick(
+            fn=ui_handlers.handle_deferred_scenery_poll,
+            inputs=[room_dropdown, current_room_name, deferred_scenery_state],
+            outputs=[current_scenery_display, scenery_image_display, style_injector, deferred_scenery_timer],
+            queue=False, show_progress="hidden", api_visibility="private",
+        )
+        room_dropdown.input(
+            fn=ui_handlers.handle_cancel_deferred_scenery,
+            inputs=[deferred_scenery_state], outputs=[deferred_scenery_timer],
+            queue=False, show_progress="hidden", api_visibility="private",
+        )
+        stop_button.click(
+            fn=ui_handlers.handle_cancel_deferred_scenery,
+            inputs=[deferred_scenery_state], outputs=[deferred_scenery_timer],
+            queue=False, show_progress="hidden", api_visibility="private",
+        )
+        refresh_scenery_button.click(
+            fn=ui_handlers.handle_cancel_deferred_scenery,
+            inputs=[deferred_scenery_state], outputs=[deferred_scenery_timer],
+            queue=False, show_progress="hidden", api_visibility="private",
+        )
+
         chat_inputs = [
             chat_input_multimodal,
             room_dropdown, # [Fix] StateではなくUIコンポーネントの値を直接使用して混線を防止
@@ -8639,6 +8666,7 @@ try:
             enable_supervisor_cb, # [v18] Supervisorモード
             group_supervisor_rounds_number,
             translation_cache_state, # [v22] 翻訳不整合対策
+            deferred_scenery_state,
         ]
 
         rerun_inputs = [
@@ -8661,6 +8689,7 @@ try:
             group_supervisor_rounds_number,
             translation_cache_state, # [v22] 翻訳不整合対策
             selected_message_index_state,
+            deferred_scenery_state,
         ]
 
         # 新規送信と再生成で、UI更新の対象（outputs）を完全に一致させる
@@ -8686,8 +8715,9 @@ try:
             inputs=rerun_inputs,
             outputs=unified_streaming_outputs
         ).then(
-            fn=lambda: gr.update(active=True),
-            outputs=[auto_idle_timer]
+            fn=ui_handlers.handle_after_chat_timers,
+            inputs=[deferred_scenery_state],
+            outputs=[auto_idle_timer, deferred_scenery_timer],
         )
 
         # 【v5: 堅牢化】ルーム変更イベントを2段階に分離
@@ -9592,8 +9622,9 @@ try:
             inputs=chat_inputs,
             outputs=unified_streaming_outputs # ここを変更
         ).then(
-            fn=lambda: gr.update(active=True),
-            outputs=[auto_idle_timer]
+            fn=ui_handlers.handle_after_chat_timers,
+            inputs=[deferred_scenery_state],
+            outputs=[auto_idle_timer, deferred_scenery_timer],
         )
 
         stop_button.click(
@@ -9630,6 +9661,10 @@ try:
             fn=ui_handlers.handle_gradio_voice_auto_submission,
             inputs=[gradio_voice_auto_submit_state] + chat_inputs,
             outputs=unified_streaming_outputs,
+        ).then(
+            fn=ui_handlers.handle_after_chat_timers,
+            inputs=[deferred_scenery_state],
+            outputs=[auto_idle_timer, deferred_scenery_timer],
         )
 
         refresh_scenery_button.click(

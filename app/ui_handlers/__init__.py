@@ -30,6 +30,8 @@ from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 import gradio as gr
 import datetime
 from PIL import Image, ImageOps
+from chat_completion_diagnostics import ChatCompletionProbe
+from scenery_refresh_jobs import SceneryRefreshState
 import threading
 import filetype
 
@@ -5092,10 +5094,16 @@ def _stream_and_handle_response(
     # [v22] 翻訳不整合対策
     translation_cache: dict = None,
     on_success=None,
+    deferred_scenery_state=None,
 ) -> Iterator[Tuple]:
     import time
     perf_start = time.time()
     print(f"--- [PERF] _stream_and_handle_response start (room={room_to_respond}) ---")
+    completion_probe = ChatCompletionProbe()
+    scenery_token = (
+        deferred_scenery_state.begin(soul_vessel_room)
+        if isinstance(deferred_scenery_state, SceneryRefreshState) else None
+    )
     log_memory_diagnostics(
         "chat_stream:start",
         soul_vessel_room,
@@ -5132,7 +5140,8 @@ def _stream_and_handle_response(
 
     # [v20] 動画アバター対応: thinking状態のアバターHTMLを生成
     # 動画がない場合は静止画にフォールバックし、CSSアニメーションで表現
-    current_profile_update = gr.update(value=get_avatar_html(soul_vessel_room, state="thinking"))
+    current_profile_update = gr.update(value=completion_probe.run(
+        "initial_avatar", get_avatar_html, soul_vessel_room, state="thinking"))
 
 
     try:
@@ -5594,8 +5603,9 @@ def _stream_and_handle_response(
 
                 # 表示処理
                 # ログが更新された可能性があるので、UI表示の直前に必ず再読み込みする
+                completion_probe.mark("response_saved")
                 typewriter_targets = []
-                chatbot_history, mapping_list = reload_chat_log(
+                chatbot_history, mapping_list = completion_probe.run("display_history", reload_chat_log,
                     soul_vessel_room, api_history_limit, add_timestamp, display_thoughts,
                     screenshot_mode, redaction_rules, typewriter_targets=typewriter_targets,
                 )
@@ -5707,7 +5717,7 @@ def _stream_and_handle_response(
             final_mapping_list = mapping_list
         else:
             # エラー時、キャンセル時、タイプライターOFF時など: ログから再読み込み
-            final_chatbot_history, final_mapping_list = reload_chat_log(
+            final_chatbot_history, final_mapping_list = completion_probe.run("final_history", reload_chat_log,
                 room_name=soul_vessel_room,
                 api_history_limit_value=api_history_limit,
                 add_timestamp=add_timestamp,
@@ -5737,14 +5747,9 @@ def _stream_and_handle_response(
         except Exception as _notice_e:
             print(f"--- [System Notice] 応答後の通知表示でエラー: {_notice_e} ---")
 
-        api_key = config_manager.GEMINI_API_KEYS.get(api_key_name)
-        new_scenery_text, scenery_image, token_count_text = "（更新失敗）", None, _hide_token_count_display(soul_vessel_room)
-        try:
-            season_en, time_of_day_en = utils._get_current_time_context(soul_vessel_room)
-            _, _, new_scenery_text = generate_scenery_context(soul_vessel_room, api_key, season_en=season_en, time_of_day_en=time_of_day_en)
-            scenery_image = utils.find_scenery_image(soul_vessel_room, utils.get_current_location(soul_vessel_room), season_en=season_en, time_of_day_en=time_of_day_en)
-        except Exception as e:
-            print(f"--- 警告: 応答後の情景更新に失敗しました (API制限の可能性): {e} ---")
+        # 情景・天気取得は会話の完了を待たせない。完了後にsession専用workerへ渡す。
+        new_scenery_text, scenery_image = gr.update(), gr.update()
+        completion_probe.mark("scenery_deferred")
 
         final_df_with_ids = render_alarms_as_dataframe()
         final_df = get_display_df(final_df_with_ids)
@@ -5769,15 +5774,15 @@ def _stream_and_handle_response(
         except Exception as e:
             print(f"--- [Avatar] 表情抽出エラー: {e} ---")
 
-        final_profile_update = gr.update(value=get_avatar_html(soul_vessel_room, state=final_expression))
+        final_profile_update = gr.update(value=completion_probe.run(
+            "final_avatar", get_avatar_html, soul_vessel_room, state=final_expression))
 
         # [v21] 現在地連動背景: ツール使用後に背景CSSも更新
-        effective_settings_for_style = config_manager.get_effective_settings(soul_vessel_room)
-        style_css_update = gr.update(value=_generate_style_from_settings(soul_vessel_room, effective_settings_for_style))
+        style_css_update = gr.update()
 
         token_count_text = _format_token_display(soul_vessel_room)
-        _release_rag_cache_after_chat(soul_vessel_room)
-        _trim_process_memory_after_chat(soul_vessel_room)
+        completion_probe.run("rag_release", _release_rag_cache_after_chat, soul_vessel_room)
+        completion_probe.run("memory_trim", _trim_process_memory_after_chat, soul_vessel_room)
         log_memory_diagnostics(
             "chat_stream:end",
             soul_vessel_room,
@@ -5794,8 +5799,7 @@ def _stream_and_handle_response(
         # callbackを呼ばず、次回の再送判定を保持する。
         response_text = utils.get_content_as_string(last_ai_message) if last_ai_message else ""
         response_is_successful = bool(
-            on_success is not None
-            and not generator_exited
+            not generator_exited
             and not _stop_generation_event.is_set()
             and final_error_message is None
             and response_text
@@ -5803,12 +5807,13 @@ def _stream_and_handle_response(
             and "[ERROR]" not in response_text.upper()
             and "⛔ システムエラー" not in response_text
         )
-        if response_is_successful:
+        if response_is_successful and on_success is not None:
             try:
-                on_success()
+                completion_probe.run("success_callback", on_success)
             except Exception:
                 logger.warning("ストリーム成功後の後処理に失敗しました", exc_info=True)
 
+        completion_probe.before_yield(final_chatbot_history, final_profile_update, style_css_update)
         yield (final_chatbot_history, final_mapping_list, gr.update(), token_count_text,
                location_dropdown_update, new_scenery_text,
                final_df_with_ids, final_df, scenery_image,
@@ -5819,6 +5824,17 @@ def _stream_and_handle_response(
                style_css_update, # [v21] Sync Background
                translation_cache # [v22] 17番目
         )
+        # Gradioがgeneratorを再開した時点。ブラウザの描画完了を意味しない。
+        completion_probe.mark("generator_resumed")
+        if response_is_successful and scenery_token is not None:
+            try:
+                schedule_deferred_scenery(
+                    deferred_scenery_state, scenery_token, soul_vessel_room,
+                    config_manager.GEMINI_API_KEYS.get(api_key_name), completion_probe,
+                )
+            except Exception:
+                # 情景の登録失敗でも、保存済み会話と操作復帰は確定している。
+                logger.warning("会話後の情景更新を開始できませんでした")
 
 def _create_api_parts_from_files(file_paths: List[str]) -> List[Dict]:
     """
@@ -5886,7 +5902,8 @@ def handle_message_submission(
     enable_supervisor: bool = False, # [v18] Supervisor機能の有効/無効
     group_supervisor_rounds: int = 1,
     # [v22] 翻訳不整合対策
-    translation_cache: dict = None
+    translation_cache: dict = None,
+    deferred_scenery_state=None,
 ):
     import time
     perf_start = time.time()
@@ -6085,6 +6102,7 @@ def handle_message_submission(
         # [v22] 翻訳不整合対策
         translation_cache=translation_cache,
         on_success=_commit_scenery_context_after_success,
+        deferred_scenery_state=deferred_scenery_state,
     )
 
 def handle_gradio_voice_transcription(audio_path, stt_provider: str, action_mode: str, multimodal_input: dict, room_name: str, api_key_name: str):
@@ -6206,7 +6224,8 @@ def handle_gradio_voice_auto_submission(
     redaction_rules: list,
     enable_supervisor: bool = False,
     group_supervisor_rounds: int = 1,
-    translation_cache: dict = None
+    translation_cache: dict = None,
+    deferred_scenery_state=None,
 ):
     """Gradio音声入力の自動送信モード用に、既存の送信ハンドラへ橋渡しする。"""
     if not auto_submit_ready:
@@ -6229,6 +6248,7 @@ def handle_gradio_voice_auto_submission(
         enable_supervisor,
         group_supervisor_rounds,
         translation_cache,
+        deferred_scenery_state,
     )
 
 def handle_rerun_button_click(
@@ -6245,7 +6265,8 @@ def handle_rerun_button_click(
     group_supervisor_rounds: int = 1,
     # [v22] 翻訳不整合対策
     translation_cache: dict = None,
-    abs_index: Optional[int] = None
+    abs_index: Optional[int] = None,
+    deferred_scenery_state=None,
 ):
     """
     【v3: 遅延解消版】発言の再生成を処理する司令塔。
@@ -6354,7 +6375,8 @@ def handle_rerun_button_click(
         enable_supervisor=enable_supervisor,  # [v18] Supervisor機能の有効/無効
         group_supervisor_rounds=group_supervisor_rounds,
         # [v22] 翻訳キャッシュを最後の戻り値に追加するためにラップ
-        translation_cache=translation_cache
+        translation_cache=translation_cache,
+        deferred_scenery_state=deferred_scenery_state,
     )
 
 def _get_updated_scenery_and_image(room_name: str, api_key_name: str, force_text_regenerate: bool = False) -> Tuple[str, Optional[str]]:
@@ -24677,4 +24699,14 @@ from .memory import (
     handle_full_reindex,
     handle_current_log_reindex,
     handle_refresh_goals,
+)
+
+# 会話を待たせない情景更新（per-session state / workerからの結果だけ受け取る）。
+from .deferred_scenery import (
+    create_deferred_scenery_state,
+    close_deferred_scenery_state,
+    handle_cancel_deferred_scenery,
+    handle_after_chat_timers,
+    handle_deferred_scenery_poll,
+    schedule_deferred_scenery,
 )
