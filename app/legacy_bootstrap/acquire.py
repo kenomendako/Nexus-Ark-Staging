@@ -625,7 +625,9 @@ def _safe_extract_app_archive(archive: Path, destination: Path) -> Path:
             shutil.rmtree(temporary, ignore_errors=True)
 
 
-def _select_full_target(client: Any, current_version: Version) -> tuple[Any, str, Version]:
+def _select_full_target(
+    client: Any, current_version: Version, *, allow_current_version: bool = False
+) -> tuple[Any, str, Version]:
     refresh = getattr(client, "refresh", None)
     if callable(refresh):
         try:
@@ -655,7 +657,7 @@ def _select_full_target(client: Any, current_version: Version) -> tuple[Any, str
             if descriptor is None:
                 continue
             target_name, version = descriptor
-            if version > current_version and not version.is_prerelease and not version.is_devrelease:
+            if (version > current_version or (allow_current_version and version == current_version)) and not version.is_prerelease and not version.is_devrelease:
                 candidates.append((version, target_name, meta))
     except TypeError as exc:
         raise _fail("TUF target metadata contract is invalid", exc) from None
@@ -682,6 +684,7 @@ def acquire_release(
     trusted_root: Path,
     update_url: str,
     current_version: str,
+    allow_current_version: bool = False,
     progress: Progress | None = None,
     client_factory: Callable[..., Any] = SecureTufClient,
     extractor: Callable[[Path, Path], Any] | None = None,
@@ -690,6 +693,8 @@ def acquire_release(
 ) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     """旧rootへ触れず、新しいapp/runtimeを兄弟workspaceへ準備する。
 
+    ``allow_current_version`` は旧Startだけが残る混在環境の復旧に限り、
+    同じ版の署名済みtargetを再取得する。targetの差し替えやdowngradeは許可しない。
     ``extractor`` はテスト用のapp archive展開差し替えで、
     ``extractor(archive_path, destination)`` を呼ぶ。デフォルトは本moduleの
     safe tar extractorである。runtimeはmanifestのbindingが存在する場合だけ、
@@ -731,7 +736,9 @@ def acquire_release(
     from .verification import record_roots
 
     record_roots(client, work_dir)
-    meta, target_name, target_version = _select_full_target(client, current)
+    meta, target_name, target_version = _select_full_target(
+        client, current, allow_current_version=allow_current_version
+    )
     target_info = _client_target_info(client, meta, target_name)
     if target_info is None:
         raise _fail("signed release target is missing")

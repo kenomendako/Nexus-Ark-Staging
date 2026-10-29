@@ -361,10 +361,13 @@ def install(root: Path, source_root: Path, uv: Path, *, default_update_url: str,
         raise BootstrapError('insufficient-space')
     workspace = create_workspace(root)
     progress('download')
+    # 旧方式で本体だけ新版になった場合も、旧Startのままなら同版の
+    # 署名済み一式で環境を再構築する。通常更新のversion比較は変えない。
+    acquisition_options = {'allow_current_version': True} if 'robocopy' in start_text else {}
     app, exact, acquisition = acquire(work_dir=workspace / 'download',
                                       trusted_root=source_root / 'metadata/root.json',
                                       update_url=update_url, current_version=old_version,
-                                      progress=progress)
+                                      progress=progress, **acquisition_options)
     next_root = workspace / 'next-root'
     shutil.copytree(app, next_root / 'app')
     runtime_source = acquisition.get('runtime_path')
