@@ -206,6 +206,13 @@ export const WORKER_API_CATALOG = [
     implemented: true,
   },
   {
+    method: "PUT",
+    path: "/v1/travel-sessions/{travel_session_id}/budget",
+    purpose: "登録端末の明示確認後、今回の旅行全体または選択ペルソナの概算上限だけを増額（自動送信なし）",
+    auth: "device",
+    implemented: true,
+  },
+  {
     method: "GET",
     path: "/v1/travel-sessions/{travel_session_id}/usage-summary",
     purpose: "既知料金・金額不明件数・cache利用量・残予算の取得",

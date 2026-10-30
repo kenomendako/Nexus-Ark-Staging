@@ -3142,3 +3142,10 @@ body[data-active-page="settings"] #management-details {
 .chat-connection-panel p { margin: 0 0 8px; }
 .chat-connection-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .chat-connection-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+
+.travel-budget-dialog { max-width: min(36rem, calc(100vw - 2rem)); max-height: 85dvh; overflow-y: auto; padding: 1.2rem; border-radius: 1rem; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; }
+#travel-budget-access { flex: 0 0 auto; }
+#travel-budget-access:not([hidden]) { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.travel-budget-dialog .field { margin-block: .6rem; }
+
+.travel-budget-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }

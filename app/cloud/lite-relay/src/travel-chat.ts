@@ -7,7 +7,7 @@ import {
   type PersonaRoute,
   type ProviderProfileRow,
 } from "./phase2-routing";
-import { getUsageSummary, holdBudget, releaseBudget, reserveBudget } from "./budget";
+import { BudgetLimitError, getUsageSummary, holdBudget, releaseBudget, reserveBudget } from "./budget";
 import { buildProviderRequest, type CanonicalMessage } from "./provider-requests";
 import { ensureProviderCache, type ProviderCacheContext } from "./provider-cache";
 import { estimateUsageCost } from "./pricing-catalog";
@@ -311,6 +311,7 @@ export async function streamTravelMessage(
     return Response.json(
       {
         error: code,
+        ...(error instanceof BudgetLimitError ? { next_request_reserved_usd: error.nextRequestReservedUsd } : {}),
         safe_message_ja: code === "budget_limit_exceeded"
           ? "この送信は設定した概算予算を超えるため、プロバイダへ送信しませんでした。"
           : code === "budget_unknown_price_blocked"

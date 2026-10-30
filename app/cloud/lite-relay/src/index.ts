@@ -39,6 +39,7 @@ import {
 import { deleteSessionContent, getEventsAfterCursor, recoverStaleRequests } from "./storage";
 import { messageRequestStatus, streamTravelMessage, type StreamTravelLifecycle } from "./travel-chat";
 import { getUsageSummary } from "./budget";
+import { changeTravelBudget } from "./budget-recovery";
 import { deleteProviderCaches } from "./provider-cache";
 import {
   acknowledgeReturn, buildReturnManifest, buildSignedReturnChunk, emergencyReclaimPersona, startReturn,
@@ -507,16 +508,24 @@ const coreHandler = {
         return json({ error: code }, code === "travel_persona_not_found" ? 404 : code === "travel_session_not_active" ? 409 : 400);
       }
     }
+    const budgetId = pathId(url.pathname, "/v1/travel-sessions/", "/budget");
+    if (request.method === "PUT" && budgetId) {
+      if (!device) return json({ error: "unauthorized" }, 401);
+      try {
+        return json(await changeTravelBudget(env.DB, budgetId, await request.json(), nowIso));
+      } catch (error) {
+        const code = errorCode(error);
+        return json({ error: code }, code.endsWith("_not_found") ? 404 :
+          ["travel_session_not_active", "travel_persona_not_active", "session_message_in_progress", "budget_change_conflict"].includes(code) ? 409 : 400);
+      }
+    }
     const usageSummaryId = pathId(url.pathname, "/v1/travel-sessions/", "/usage-summary");
     if (request.method === "GET" && usageSummaryId) {
       if (!device) return json({ error: "unauthorized" }, 401);
       try {
         const personaId = url.searchParams.get("persona_id") || undefined;
         const summary = await getUsageSummary(env.DB, usageSummaryId, nowIso, personaId);
-        if (personaId) {
-          const sessionSummary = await getUsageSummary(env.DB, usageSummaryId, nowIso);
-          return json({ ...summary, session_summary: sessionSummary });
-        }
+        if (personaId) return json(summary);
         if (!personaId) {
           const personas = await env.DB.prepare(
             "SELECT persona_id FROM travel_personas WHERE travel_session_id = ? ORDER BY persona_id",

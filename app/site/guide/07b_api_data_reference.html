@@ -268,6 +268,7 @@
 </tr>
 </tbody>
 </table>
+<p>予算の明示増額は登録端末のaccess tokenで <code>PUT /v1/travel-sessions/{session_id}/budget</code> を使用します。 <code>scope</code>（<code>session</code>／<code>persona</code>）、ペルソナ範囲なら<code>persona_id</code>、確認時点の<code>expected</code>と新しい<code>limits</code> （各<code>daily_limit_usd</code>／<code>session_limit_usd</code>）、<code>confirmed: true</code>が必要です。今回の有限上限の増額だけを許可し、 既存の無制限項目は<code>null</code>を維持します。古い上限・送信中・帰宅後は拒否し、次回初期値や保留額を変えず、自動送信しません。</p>
 <p>単一ペルソナの旧セッションでは<code>/v1/travel-sessions/{session_id}/events</code>を使います。イベントは100件単位で取得し、必要なら返された<code>next_cursor</code>を次の<code>after_sequence</code>へ渡します。 Workerのイベント本文に音楽カードがあればLiteで表示できますが、本体のツール実行やPC側のツール結果をWorkerへ追加する機能ではありません。 Workerには本体ノート・手紙・現在地・稼働タイマー・思考を直接取得する同等のGET APIはありません。完全なペルソナsnapshotの本文をGETで読むAPIもありません。外部AI向けの書き出しは明示同意付きの別操作です。</p>
 <h2>本体APIの返却例</h2>
 <p>以下はすべて架空のデータです。画像パスやIDは、実際には取得結果にある値を使います。</p>

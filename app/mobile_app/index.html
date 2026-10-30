@@ -8,7 +8,7 @@
     <title>Nexus Ark Lite</title>
     <link rel="manifest" href="/lite/manifest.webmanifest">
     <link rel="icon" href="/lite/icon.png">
-    <link rel="stylesheet" href="/lite/static/styles.css?v=113">
+    <link rel="stylesheet" href="/lite/static/styles.css?v=114">
   </head>
   <body data-active-page="chat">
     <main class="app-shell">
@@ -119,6 +119,10 @@
             </div>
           </div>
         </details>
+        <div id="travel-budget-access" hidden>
+          <button class="secondary-button compact-button" id="travel-budget-open" type="button">予算を確認・変更</button>
+          <span class="management-meta" id="travel-budget-notice" aria-live="polite"></span>
+        </div>
         <div class="notice-panel" id="secure-origin-notice" hidden></div>
         <details class="notice-panel" id="travel-send-failure" hidden>
           <summary>前回の送信エラー（詳細）</summary>
@@ -754,10 +758,31 @@
         </div>
       </details>
     </dialog>
+    <dialog id="travel-budget-dialog" class="travel-budget-dialog">
+      <h2>今回のお出かけの予算</h2>
+      <p class="management-meta">無料設定でも有料換算の参考額で判定します。実際の請求額や無料枠の残量ではありません。次の回答の最大見込み額も先に確保します。</p>
+      <p id="travel-budget-totals"></p>
+      <p id="travel-budget-quote"></p>
+      <label class="field"><span>変更する範囲</span><select id="travel-budget-scope"><option value="session">お出かけ全体（全ペルソナ共通）</option><option value="persona">選択中のペルソナ</option></select></label>
+      <p id="travel-budget-current"></p>
+      <div class="travel-route-grid">
+        <label class="field"><span>新しい1日の上限（USD）</span><input id="travel-budget-daily" type="number" min="0" step="any" inputmode="decimal"></label>
+        <label class="field"><span>新しいお出かけ全体の上限（USD）</span><input id="travel-budget-session" type="number" min="0" step="any" inputmode="decimal"></label>
+      </div>
+      <label><input id="travel-budget-confirm" type="checkbox"> 費用が発生する場合があることを理解し、今回の上限を増額します。</label>
+      <p class="management-meta">全体とペルソナの両方の上限が適用されます。今回だけの変更で、次回の初期設定は変わりません。未確定の料金・保留記録は残ります。</p>
+      <p id="travel-budget-result" role="status" aria-live="polite"></p>
+      <div class="travel-route-actions">
+        <button id="travel-budget-refresh" class="secondary-button" type="button">状態を再確認</button>
+        <button id="travel-budget-save" class="primary-button" type="button">確認して上限を変更</button>
+        <button id="travel-budget-close" class="secondary-button" type="button">閉じる</button>
+      </div>
+      <p class="management-meta">変更後も文章を自動再送しません。画面へ戻って確認してから「送信」を押してください。</p>
+    </dialog>
     <dialog class="image-dialog" id="image-dialog">
       <button class="icon-button close-dialog-button" id="close-image-dialog" type="button" aria-label="閉じる">×</button>
       <img id="image-dialog-img" alt="拡大画像">
     </dialog>
-    <script src="/lite/static/app.js?v=113" type="module"></script>
+    <script src="/lite/static/app.js?v=114" type="module"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
-import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=113";
-import { parsePairingHandoff } from "./pairing-handoff.js?v=113";
-import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=113";
+import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=114";
+import { parsePairingHandoff } from "./pairing-handoff.js?v=114";
+import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=114";
 import {
   LITE_UPDATE_RESUME_THROTTLE_MS,
   LITE_UPDATE_TIMEOUT_MS,
@@ -10,9 +10,9 @@ import {
   liteBuildMetadataUrl,
   liteServiceWorkerPaths,
   liteUpdateBlockers,
-} from "./lite-update-state.js?v=113";
+} from "./lite-update-state.js?v=114";
 
-const LITE_UI_BUILD = "v113";
+const LITE_UI_BUILD = "v114";
 
 function isCloudHostedLite() {
   return !window.location.pathname.startsWith("/lite");
@@ -124,6 +124,10 @@ const state = {
   travelRouteChanging: false,
   travelRouteUsable: true,
   travelBudgetStopped: false,
+  travelBudgetChanging: false,
+  travelBudgetSummary: null,
+  travelBudgetContext: null,
+  travelBudgetQuote: null,
   homeReachable: false,
   externalAiExportSource: null,
   latestStandbySnapshot: null,
@@ -355,6 +359,21 @@ const els = {
   travelUsageKnown: document.querySelector("#travel-usage-known"),
   travelUsageBudget: document.querySelector("#travel-usage-budget"),
   travelUsageWarning: document.querySelector("#travel-usage-warning"),
+  travelBudgetAccess: document.querySelector("#travel-budget-access"),
+  travelBudgetOpen: document.querySelector("#travel-budget-open"),
+  travelBudgetNotice: document.querySelector("#travel-budget-notice"),
+  travelBudgetDialog: document.querySelector("#travel-budget-dialog"),
+  travelBudgetTotals: document.querySelector("#travel-budget-totals"),
+  travelBudgetQuote: document.querySelector("#travel-budget-quote"),
+  travelBudgetScope: document.querySelector("#travel-budget-scope"),
+  travelBudgetCurrent: document.querySelector("#travel-budget-current"),
+  travelBudgetDaily: document.querySelector("#travel-budget-daily"),
+  travelBudgetSession: document.querySelector("#travel-budget-session"),
+  travelBudgetConfirm: document.querySelector("#travel-budget-confirm"),
+  travelBudgetResult: document.querySelector("#travel-budget-result"),
+  travelBudgetRefresh: document.querySelector("#travel-budget-refresh"),
+  travelBudgetSave: document.querySelector("#travel-budget-save"),
+  travelBudgetClose: document.querySelector("#travel-budget-close"),
   personaAvatar: document.querySelector("#persona-avatar"),
   themeDetails: document.querySelector("#theme-details"),
   themeSummaryStatus: document.querySelector("#theme-summary-status"),
@@ -1917,7 +1936,12 @@ async function api(path, options = {}) {
 
 function setLiteMode(mode) {
   const nextMode = mode === "travel" ? "travel" : "home";
-  if (nextMode !== state.mode) resetHomeFeatures({ preserveStatus: true });
+  if (nextMode !== state.mode) {
+    resetHomeFeatures({ preserveStatus: true });
+    state.travelBudgetSummary = null;
+    if (els.travelBudgetDialog.open) els.travelBudgetDialog.close();
+    state.travelBudgetContext = null;
+  }
   state.mode = nextMode;
   renderRoomStatusFreshness();
   renderChatContextLocation();
@@ -1937,6 +1961,11 @@ function setLiteMode(mode) {
 function renderTravelSendFailure() {
   const failure = state.mode === "travel"
     ? travelAdapter.lastSendFailure(state.travelSession, state.travelPersonaId) : null;
+  els.travelBudgetAccess.hidden = state.mode !== "travel" || !state.travelSession;
+  const budgetFailure = ["budget_limit_exceeded", "persona_budget_limit_exceeded"].includes(failure?.code);
+  els.travelBudgetNotice.textContent = budgetFailure || state.travelBudgetStopped
+    ? "予算で送信を停止しました。確認して上限を変更できます。"
+    : state.travelBudgetSummary?.warning ? "概算予算の上限に近づいています。" : "";
   els.travelSendFailure.hidden = !failure;
   els.travelSendFailureDetail.textContent = failure
     ? `${failure.message}（確認コード: ${failure.code}${failure.httpStatus ? ` / HTTP ${failure.httpStatus}` : ""}）`
@@ -2044,7 +2073,7 @@ function selectedTravelModel() {
 }
 
 function setTravelRouteControls() {
-  const busy = state.sending || state.travelRouteChanging;
+  const busy = state.sending || state.travelRouteChanging || state.travelBudgetChanging;
   els.roomSelect.disabled = busy;
   els.travelProfileSelect.disabled = busy || state.travelProfiles.length === 0;
   els.travelModelSelect.disabled = busy || state.travelModels.length === 0;
@@ -2123,6 +2152,104 @@ async function loadTravelModels(profileId, refresh = false) {
   setTravelRouteControls();
 }
 
+function budgetDialogContextCurrent(context) {
+  return context && state.mode === "travel" && state.travelSession === context.session
+    && state.travelPersonaId === context.personaId && travelAdapter.configuredBase() === context.base;
+}
+
+function budgetMoney(value) { return value == null ? "上限なし" : `$${Number(value).toFixed(4)}`; }
+
+function renderTravelBudgetEditor() {
+  const context = state.travelBudgetContext;
+  if (!budgetDialogContextCurrent(context) || !context.summary) return;
+  const selected = els.travelBudgetScope.value === "persona";
+  const summary = context.summary;
+  const whole = summary.session_summary || summary;
+  const source = selected ? summary.persona_budget : whole.budget;
+  els.travelBudgetScope.querySelector('[value="persona"]').disabled = !summary.persona_budget;
+  if (!source) return;
+  els.travelBudgetTotals.textContent = `全体: 今回 ${budgetMoney(whole.known_cost_usd)}・今日 ${budgetMoney(whole.daily_known_cost_usd)}・保留 ${budgetMoney(whole.pending_reserved_usd)}。選択中: 今回 ${budgetMoney(summary.known_cost_usd)}・今日 ${budgetMoney(summary.daily_known_cost_usd)}・保留 ${budgetMoney(summary.pending_reserved_usd)}。`;
+  const quote = state.travelBudgetQuote;
+  els.travelBudgetQuote.textContent = quote?.sessionId === context.session.travel_session_id && quote?.personaId === context.personaId && Number.isFinite(quote.amount)
+    ? `直前に止めた送信の回答用の最大見込み額: ${budgetMoney(quote.amount)}（再送時には再計算）。`
+    : "次の送信の見込み額は、送信内容・モデル・回答の長さで変わります。";
+  els.travelBudgetCurrent.textContent = `現在の${selected ? "このペルソナ" : "全体"}の上限: 1日 ${budgetMoney(source.daily_limit_usd)} / 今回 ${budgetMoney(source.session_limit_usd)}`;
+  els.travelBudgetDaily.value = source.daily_limit_usd ?? "";
+  els.travelBudgetSession.value = source.session_limit_usd ?? "";
+  els.travelBudgetDaily.disabled = source.daily_limit_usd == null;
+  els.travelBudgetSession.disabled = source.session_limit_usd == null;
+  els.travelBudgetConfirm.checked = false;
+  els.travelBudgetSave.disabled = state.travelBudgetChanging;
+}
+
+async function openTravelBudgetEditor() {
+  if (state.mode !== "travel" || !state.travelSession || state.travelBudgetChanging) return;
+  const context = { session: state.travelSession, personaId: state.travelPersonaId, base: travelAdapter.configuredBase() };
+  state.travelBudgetContext = context;
+  els.travelBudgetScope.value = travelAdapter.lastSendFailure(context.session, context.personaId)?.code === "persona_budget_limit_exceeded" ? "persona" : "session";
+  els.travelBudgetResult.textContent = "予算を確認しています…";
+  els.travelBudgetSave.disabled = true;
+  if (!els.travelBudgetDialog.open) els.travelBudgetDialog.showModal();
+  try {
+    const summary = await travelAdapter.usageSummary(context.session, context.personaId);
+    if (state.travelBudgetContext !== context || !budgetDialogContextCurrent(context)) return;
+    context.summary = summary;
+    renderTravelBudgetEditor();
+    els.travelBudgetResult.textContent = "変更する上限を入力し、確認欄にチェックしてください。";
+  } catch {
+    if (state.travelBudgetContext === context) els.travelBudgetResult.textContent = "予算を取得できません。接続を確認して「状態を再確認」を押してください。";
+  }
+}
+
+async function saveTravelBudgetChange() {
+  const context = state.travelBudgetContext;
+  if (state.travelBudgetChanging || !budgetDialogContextCurrent(context) || !context.summary) return;
+  if (!els.travelBudgetConfirm.checked) { els.travelBudgetResult.textContent = "費用の確認欄にチェックしてください。"; return; }
+  const scope = els.travelBudgetScope.value;
+  const previous = scope === "persona" ? context.summary.persona_budget : (context.summary.session_summary || context.summary).budget;
+  if (!previous) return;
+  const limit = (input, old) => old == null ? null : input.value.trim() === "" ? NaN : Number(input.value);
+  const limits = { daily_limit_usd: limit(els.travelBudgetDaily, previous.daily_limit_usd), session_limit_usd: limit(els.travelBudgetSession, previous.session_limit_usd) };
+  // 既存の無制限はそのまま保持。増額のみ、空欄で制限を消さない。
+  if (Object.entries(limits).some(([key, value]) => previous[key] != null && (!Number.isFinite(value) || value < previous[key]))
+    || !Object.entries(limits).some(([key, value]) => previous[key] != null && value > previous[key])) {
+    els.travelBudgetResult.textContent = "現在以上の金額を入力し、少なくとも一つの上限を増やしてください。"; return;
+  }
+  state.travelBudgetChanging = true;
+  els.travelBudgetSave.disabled = true;
+  els.travelBudgetClose.disabled = true;
+  els.travelBudgetRefresh.disabled = true;
+  els.travelBudgetScope.disabled = true;
+  els.travelBudgetResult.textContent = "上限を変更しています…（15秒以内に完了を確認できなければ、状態の再確認へ進みます）";
+  setTravelRouteControls();
+  try {
+    await travelAdapter.changeBudget(context.session, { scope, ...(scope === "persona" ? { persona_id: context.personaId } : {}), confirmed: true,
+      expected: { daily_limit_usd: previous.daily_limit_usd, session_limit_usd: previous.session_limit_usd }, limits });
+    if (state.travelBudgetContext !== context || !budgetDialogContextCurrent(context)) return;
+    await loadTravelUsage();
+    if (!budgetDialogContextCurrent(context)) return;
+    context.summary = state.travelBudgetSummary;
+    renderTravelBudgetEditor();
+    els.travelBudgetResult.textContent = "今回の上限を変更しました。自動再送はしません。別の上限も不足する場合は「変更する範囲」を切り替えて確認してください。閉じて文章を確認してから送信できます。";
+  } catch (error) {
+    if (state.travelBudgetContext !== context || !budgetDialogContextCurrent(context)) return;
+    const code = travelAdapter.errorCode(error);
+    els.travelBudgetResult.textContent = error.status === 404 || code === "not_found"
+      ? "このクラウドは予算変更に未対応です。本体からLite用クラウドとスマホ版を更新してください。"
+      : code === "budget_change_conflict" ? "別の画面で予算が変わった可能性があります。状態を再確認して変更してください。"
+      : code === "session_message_in_progress" ? "送信中の処理が残っています。送信結果を確認してから変更してください。"
+      : "変更の完了を確認できません。自動再試行はしません。状態を再確認してください。";
+    context.summary = null;
+  } finally {
+    state.travelBudgetChanging = false;
+    els.travelBudgetSave.disabled = !context.summary;
+    els.travelBudgetClose.disabled = false;
+    els.travelBudgetRefresh.disabled = false;
+    els.travelBudgetScope.disabled = false;
+    setTravelRouteControls();
+  }
+}
+
 async function loadTravelUsage() {
   if (!state.travelSession || !state.travelPersonaId) return;
   const session = state.travelSession;
@@ -2137,8 +2264,9 @@ async function loadTravelUsage() {
   const limit = summary.persona_budget
     ? summary.persona_budget.session_limit_usd
     : summary.budget?.session_limit_usd;
-  const stopped = summary.stopped === true;
+  const stopped = summary.stopped === true || summary.session_summary?.stopped === true;
   state.travelBudgetStopped = stopped;
+  state.travelBudgetSummary = summary;
   els.travelUsageKnown.textContent =
     `利用額: 約$${known.toFixed(4)}${summary.unknown_price_count ? `・金額不明 ${summary.unknown_price_count}件` : ""}`;
   els.travelUsageBudget.textContent =
@@ -2150,6 +2278,7 @@ async function loadTravelUsage() {
     : summary.warning
       ? "予算上限に近づいています。"
       : "";
+  renderTravelSendFailure();
   setTravelRouteControls();
 }
 
@@ -2187,6 +2316,7 @@ async function refreshTravelPersonaView() {
   renderChatContextName();
   renderRoomStatusFreshness();
   state.travelBudgetStopped = false;
+  state.travelBudgetSummary = null;
   state.travelRouteUsable = true;
   renderTravelSendFailure();
   await Promise.all([
@@ -3192,6 +3322,11 @@ async function sendTravelMessage(message) {
     removeMessage(pending);
     if (travelAdapter.errorCode(error) === "pending_send_unresolved") {
       removeMessage(userMessage);
+    }
+    if (["budget_limit_exceeded", "persona_budget_limit_exceeded"].includes(travelAdapter.errorCode(error))) {
+      state.travelBudgetQuote = { sessionId: state.travelSession.travel_session_id, personaId: state.travelPersonaId,
+        amount: error.nextRequestReservedUsd };
+      await loadTravelUsage().catch(() => {});
     }
     await refreshTravelPendingRecovery().catch(() => {});
     throw error;
@@ -6586,6 +6721,13 @@ els.travelModelRefreshButton.addEventListener("click", () => {
       "モデル一覧を更新できません。現在使用中のAIは変更していません。";
   });
 });
+els.travelBudgetOpen.addEventListener("click", openTravelBudgetEditor);
+els.travelBudgetRefresh.addEventListener("click", openTravelBudgetEditor);
+els.travelBudgetScope.addEventListener("change", renderTravelBudgetEditor);
+els.travelBudgetSave.addEventListener("click", saveTravelBudgetChange);
+els.travelBudgetClose.addEventListener("click", () => { els.travelBudgetDialog.close(); state.travelBudgetContext = null; });
+els.travelBudgetDialog.addEventListener("close", () => { state.travelBudgetContext = null; });
+els.travelBudgetDialog.addEventListener("cancel", (event) => { if (state.travelBudgetChanging) event.preventDefault(); });
 els.travelRouteApplyButton.addEventListener("click", () => {
   applyTravelRouteChange().catch(() => {
     els.travelRouteStatus.textContent =

@@ -726,6 +726,12 @@ export const travelAdapter = {
       }),
     });
   },
+  changeBudget(session, payload) {
+    // 書込み結果が不明でも再試行せず、GETで現在の上限を再確認する。
+    return withConnectionTimeout((signal) => jsonRequest(`/v1/travel-sessions/${encodeURIComponent(session.travel_session_id)}/budget`, {
+      method: "PUT", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    }), { timeoutMs: 15000 });
+  },
   usageSummary(session, personaId) {
     const query = Array.isArray(session.personas) && personaId
       ? `?persona_id=${encodeURIComponent(personaId)}`
@@ -774,7 +780,11 @@ export const travelAdapter = {
         assertPendingRaw(pendingRaw);
         const failure = sendFailure(body?.error, response.status);
         rememberSendFailure(pending, failure);
-        throw new TravelAdapterError(failure.message, failure.code, failure.httpStatus);
+        const error = new TravelAdapterError(failure.message, failure.code, failure.httpStatus);
+        if (["budget_limit_exceeded", "persona_budget_limit_exceeded"].includes(failure.code)
+          && typeof body.next_request_reserved_usd === "number" && Number.isFinite(body.next_request_reserved_usd)
+          && body.next_request_reserved_usd >= 0) error.nextRequestReservedUsd = body.next_request_reserved_usd;
+        throw error;
       }
       let streamText;
       try {

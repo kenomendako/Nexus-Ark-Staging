@@ -88,6 +88,11 @@ Liteが利用していても、以下はアトリエアプリへ無条件に公�
 | `/v1/provider-profiles/{profile_id}/models` | モデル候補・利用可否・料金表の版。`refresh=1`で再取得 |
 | `/v1/message-requests/{client_message_id}` | 送信要求の状態・確定済みevent ID等。未確定送信の再照会にも使用 |
 
+予算の明示増額は登録端末のaccess tokenで `PUT /v1/travel-sessions/{session_id}/budget` を使用します。
+`scope`（`session`／`persona`）、ペルソナ範囲なら`persona_id`、確認時点の`expected`と新しい`limits`
+（各`daily_limit_usd`／`session_limit_usd`）、`confirmed: true`が必要です。今回の有限上限の増額だけを許可し、
+既存の無制限項目は`null`を維持します。古い上限・送信中・帰宅後は拒否し、次回初期値や保留額を変えず、自動送信しません。
+
 単一ペルソナの旧セッションでは`/v1/travel-sessions/{session_id}/events`を使います。イベントは100件単位で取得し、必要なら返された`next_cursor`を次の`after_sequence`へ渡します。
 Workerのイベント本文に音楽カードがあればLiteで表示できますが、本体のツール実行やPC側のツール結果をWorkerへ追加する機能ではありません。
 Workerには本体ノート・手紙・現在地・稼働タイマー・思考を直接取得する同等のGET APIはありません。完全なペルソナsnapshotの本文をGETで読むAPIもありません。外部AI向けの書き出しは明示同意付きの別操作です。

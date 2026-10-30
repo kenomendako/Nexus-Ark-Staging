@@ -29,6 +29,7 @@ export interface UsageSummary {
   warning: boolean;
   stopped: boolean;
   persona_id?: string;
+  session_summary?: UsageSummary;
 }
 
 interface SessionBudgetRow {
@@ -204,10 +205,18 @@ export async function getUsageSummary(
       ? 0 : (known + pending) / Math.max(result.persona_budget.session_limit_usd, Number.EPSILON);
     const personaDailyRatio = result.persona_budget.daily_limit_usd === null
       ? 0 : (dailyKnown + dailyPending) / Math.max(result.persona_budget.daily_limit_usd, Number.EPSILON);
-    result.warning = Math.max(personaSessionRatio, personaDailyRatio) >= budget.warning_ratio;
-    result.stopped = Math.max(personaSessionRatio, personaDailyRatio) >= 1;
+    result.warning ||= Math.max(personaSessionRatio, personaDailyRatio) >= budget.warning_ratio;
+    result.stopped ||= Math.max(personaSessionRatio, personaDailyRatio) >= 1;
+    const whole = await getUsageSummary(db, sessionId, nowIso);
+    result.session_summary = whole;
+    result.warning ||= whole.warning;
+    result.stopped ||= whole.stopped;
   }
   return result;
+}
+
+export class BudgetLimitError extends Error {
+  constructor(code: string, public readonly nextRequestReservedUsd: number) { super(code); }
 }
 
 export async function reserveBudget(
@@ -241,7 +250,7 @@ export async function reserveBudget(
     (summary.budget.session_limit_usd !== null && summary.known_cost_usd + summary.pending_reserved_usd + amount > summary.budget.session_limit_usd) ||
     (summary.budget.daily_limit_usd !== null && summary.daily_known_cost_usd + summary.daily_pending_reserved_usd + amount > summary.budget.daily_limit_usd)
   ) {
-    throw new Error("budget_limit_exceeded");
+    throw new BudgetLimitError("budget_limit_exceeded", amount);
   }
   if (input.personaId) {
     const row = await db.prepare(
@@ -254,7 +263,7 @@ export async function reserveBudget(
     if (
       (row.budget_session_limit_usd !== null && personaSummary.known_cost_usd + personaSummary.pending_reserved_usd + amount > row.budget_session_limit_usd) ||
       (row.budget_daily_limit_usd !== null && personaSummary.daily_known_cost_usd + personaSummary.daily_pending_reserved_usd + amount > row.budget_daily_limit_usd)
-    ) throw new Error("persona_budget_limit_exceeded");
+    ) throw new BudgetLimitError("persona_budget_limit_exceeded", amount);
   }
   const result = await db
     .prepare(
