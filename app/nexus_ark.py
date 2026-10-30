@@ -6244,7 +6244,11 @@ try:
                             '<p class="outing-mode-loading-message" hidden aria-live="polite"></p>',
                             elem_id="outing_mode_loading_feedback",
                         )
-                        gr.Markdown("**Liteの操作メニュー** — 初めての方は「初回設定・接続管理」から「PCを止めても使う」へ。設定済みの方は、目的の操作へ直接進めます。")
+                        gr.Markdown(
+                            "**Liteの操作メニュー** — 初めての方は「初回設定・接続管理」から使い方を選びます。"
+                            "スマホからの帰宅も使う方は、本体接続の設定を、実際に使うホーム画面のLiteで確認してください。"
+                            "準備済みの方は「お出かけを準備」「帰宅・統合」へ進めます。"
+                        )
                         with gr.Row():
                             lite_daily_shortcut = gr.Button("お出かけを準備", variant="primary")
                             lite_return_shortcut = gr.Button("帰宅・統合", variant="secondary")
@@ -6255,13 +6259,24 @@ try:
                             elem_id="outing_lite_independent",
                             elem_classes=["outing-mode-panel"],
                         ) as outing_lite_daily_group:
-                            lite_outing_back_to_setup = gr.Button(
-                                "← Liteの使い方・接続設定へ戻る", variant="secondary"
-                            )
+                            with gr.Row():
+                                lite_outing_back_to_setup = gr.Button(
+                                    "← Liteの使い方・接続設定へ戻る", variant="secondary"
+                                )
+                                lite_outing_home_connection_shortcut = gr.Button(
+                                    "本体との接続を設定・確認", variant="secondary",
+                                    elem_id="lite_home_connection_shortcut",
+                                )
                             gr.Markdown(
                                 "## PCを止めている間も、スマホで会話する\n"
                                 "ペルソナを最大3人までスマホへ連れて行き、帰宅後に会話をこの本体へ戻せます。"
                                 "この画面では、上から **接続確認 → お出かけ前の準備 → 出発 → 帰宅** の順に進みます。"
+                            )
+                            gr.Markdown(
+                                "**帰宅方法を先に確認:** スマホの「署名付き帰宅」を使うには、"
+                                "このPCを起動し、ホーム画面のLiteの「設定」→「本体への接続」で接続できる必要があります。"
+                                "上の「本体との接続を設定・確認」から手順を開けます。"
+                                "本体接続を設定しなくても独立モードは利用でき、帰宅はこのPCの「帰宅・統合」から行えます。"
                             )
                             with gr.Accordion("この画面に出てくる言葉", open=False):
                                 gr.Markdown(
@@ -6534,7 +6549,6 @@ try:
                             elem_classes=["outing-mode-panel"],
                         ) as outing_lite_setup_group:
                             _api_gateway_settings = config_manager.CONFIG_GLOBAL.get("api_gateway_settings", {}) or {}
-                            external_api_status = gr.Markdown("API状態: 待機中")
 
                             with gr.Accordion("Nexus Ark Liteを使い始める", open=True):
                                 gr.HTML(value=ui_handlers.build_api_gateway_personal_use_guide())
@@ -6559,14 +6573,19 @@ try:
                                 gr.Markdown(
                                     "### 1. 用途\n"
                                     "PCで起動中のNexus Ark本体へスマホやタブレットから接続し、"
-                                    "本体と同じ会話・記憶・機能を使うモードです。独立モード用のデータ作成は不要です。\n\n"
+                                    "本体と同じ会話・記憶・機能を使うモードです。スマホから独立モードの帰宅を行う時にも使います。\n\n"
+                                    "**設定する場所:** スマホのホーム画面からNexus Ark Liteを開き、"
+                                    "「設定」→「本体への接続」を使います。ブラウザのLiteとホーム画面のLiteで、"
+                                    "設定が共有されない場合があります。実際に使う方で接続を確認してください。\n\n"
                                     "### 2. 必要条件\n"
                                     "PCの電源とNexus Arkを起動したままにし、スマホを **同じWi-Fi** に接続するか、"
                                     "PCとスマホの両方で **Tailscale** に接続します。PCがスリープ・終了するとLiteも切断されます。\n\n"
-                                    "### 3. 本体URLと接続用Token\n"
-                                    "**本体URL** はスマホから開く住所、**接続用Token** はこの本体へ入るための合言葉です。"
+                                    "### 3. 接続用Tokenを準備\n"
+                                    "**接続用Token** はこの本体へ入るための合言葉です。"
                                     "Token認証は通常ONのまま使い、Tokenを他人へ送ったり、公開画面やスクリーンショットへ載せたりしないでください。"
-                                    "初回は下の「Token生成」を押し、接続方法を選んでから設定を保存します。"
+                                    "未設定なら「Token生成」を押し、接続方法を選んでから設定を保存します。"
+                                    "設定済みなら「保存済みTokenを表示」からコピーでき、作り直す必要はありません。"
+                                    "画面を開くURLと、LiteのAPI URL欄へ入力するURLは、下の接続情報で用途別に確認できます。"
                                 )
                                 with gr.Row():
                                     external_api_enabled_checkbox = gr.Checkbox(
@@ -6592,7 +6611,7 @@ try:
                                     external_api_token_generate_button = gr.Button("Token生成", variant="secondary", scale=1)
                                     external_api_token_show_button = gr.Button("保存済みTokenを表示", variant="secondary", scale=1)
                                 external_api_token_copy_output = gr.Textbox(
-                                    label="PWA入力用Token（一時表示）",
+                                    label="スマホへコピーするToken（一時表示）",
                                     value="",
                                     interactive=False,
                                     lines=1,
@@ -6633,6 +6652,10 @@ try:
                                     external_api_save_button = gr.Button("本体接続の設定を保存", variant="primary")
                                     external_tailscale_button = gr.Button("Tailscale HTTPS設定を実行", variant="secondary")
                                     external_api_refresh_button = gr.Button("スマホ用URL・接続情報を更新", variant="secondary")
+                                external_api_status = gr.Markdown(
+                                    "API状態: 待機中。設定の保存・HTTPS設定の結果はここに表示します。",
+                                    elem_id="lite_home_connection_result",
+                                )
                                 with gr.Accordion("Nexus Ark Lite 接続情報", open=True):
                                     external_lite_connection_help = gr.Markdown(
                                         "設定を保存し、「スマホ用URL・接続情報を更新」を押すと、ここに本体URLが表示されます。"
@@ -6642,9 +6665,11 @@ try:
                                     )
                                 gr.Markdown(
                                     "### 5. スマホで接続を確認\n"
-                                    "上に表示されたURLをスマホで開き、Liteの「設定」→「接続設定」で本体URLとTokenを確認して"
+                                    "ホーム画面から使うNexus Ark Liteを開き、「設定」→「本体への接続」で、"
+                                    "上の接続情報の **API URL（末尾に /lite を付けない）** と接続用Tokenを入力して"
                                     "「接続」を押します。画面上部が **🏠 本体接続**、メニューが **接続済み** になり、"
                                     "ルーム一覧や会話が表示されれば完了です。"
+                                    "このPCに「API Gateway: 有効」と出るだけでは、スマホから接続できたことにはなりません。"
                                     "同じWi-Fiで開けない時は、Windowsの確認画面でNexus ArkまたはPythonの"
                                     " **プライベートネットワーク** 通信だけを許可してください。\n\n"
                                     "### 6. 普段の使い方\n"
@@ -12669,6 +12694,27 @@ try:
             external_open_outing_export,
             external_open_outing_import,
         ]
+        lite_outing_home_connection_shortcut.click(
+            fn=ui_handlers.handle_outing_show_lite,
+            outputs=outing_mode_outputs,
+            queue=False,
+            show_progress="hidden",
+            js=_outing_mode_visibility_js("setup"),
+        ).then(
+            fn=ui_handlers.handle_lite_start_connected,
+            outputs=[
+                lite_connected_setup_accordion,
+                lite_independent_setup_accordion,
+                lite_independent_connectivity_accordion,
+            ],
+            queue=False,
+            show_progress="hidden",
+        ).then(
+            fn=None,
+            js="() => setTimeout(() => document.getElementById('lite_connected_setup_flow')?.scrollIntoView({behavior: 'smooth', block: 'start'}), 100)",
+            queue=False,
+            show_progress="hidden",
+        )
         lite_open_daily_event = lite_connectivity_open_travel_button.click(
             fn=ui_handlers.handle_outing_show_lite_independent,
             outputs=outing_mode_outputs,

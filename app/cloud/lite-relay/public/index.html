@@ -8,7 +8,7 @@
     <title>Nexus Ark Lite</title>
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/icon.png">
-    <link rel="stylesheet" href="/static/styles.css?v=114">
+    <link rel="stylesheet" href="/static/styles.css?v=115">
   </head>
   <body data-active-page="chat">
     <main class="app-shell">
@@ -250,11 +250,13 @@
               <span class="status-pill" id="connection-summary-url">本体接続（未設定）</span>
             </summary>
             <div class="connection-fields page-menu-content" aria-label="本体への接続">
-              <p class="management-meta">本体接続モードで使うAPI URLと接続用Tokenを、この端末に保存します。</p>
+              <p class="management-meta">本体との会話と、スマホからの帰宅に使う接続先です。ブラウザとホーム画面のLiteで設定が共有されない場合があるため、実際に使うこのLiteで設定してください。</p>
               <label class="field">
                 <span>API URL</span>
                 <input id="api-base-input" type="url" autocomplete="url" placeholder="http://192.168.0.2:8000">
               </label>
+              <p class="management-meta">本体の接続情報にある「API URL」を入力します。例: https://PC名.…ts.net（末尾の /lite は画面を開くためのもので、この欄には不要です）。</p>
+              <p class="management-meta" id="home-api-url-correction" role="status" hidden></p>
               <label class="field">
                 <span>Token</span>
                 <input id="token-input" type="password" autocomplete="current-password" placeholder="接続用Token">
@@ -783,6 +785,6 @@
       <button class="icon-button close-dialog-button" id="close-image-dialog" type="button" aria-label="閉じる">×</button>
       <img id="image-dialog-img" alt="拡大画像">
     </dialog>
-    <script src="/static/app.js?v=114" type="module"></script>
+    <script src="/static/app.js?v=115" type="module"></script>
   </body>
 </html>

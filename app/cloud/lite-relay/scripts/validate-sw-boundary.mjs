@@ -49,7 +49,7 @@ const checks = {
   travel_app_uses_common_source: travelIndexVersion === homeCacheVersion
     && travelApp.includes(`import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=${homeCacheVersion}"`)
     && travelApp.includes(`import { parsePairingHandoff } from "./pairing-handoff.js?v=${homeCacheVersion}"`)
-    && travelApp.includes(`import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=${homeCacheVersion}"`),
+    && travelApp.includes(`import { liteContinuityState, readableApiError, normalizeHomeApiBase } from "./lite-continuity-state.js?v=${homeCacheVersion}"`),
   travel_app_uses_cloud_root: travelApp.includes('function isCloudHostedLite() {\n  return true;\n}')
     && travelApp.includes('register("/service-worker.js", { scope: "/" })')
     && travelApp.includes('data: { url: `${window.location.origin}/` }')

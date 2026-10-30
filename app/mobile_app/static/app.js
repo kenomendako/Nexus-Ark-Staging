@@ -1,6 +1,6 @@
-import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=114";
-import { parsePairingHandoff } from "./pairing-handoff.js?v=114";
-import { liteContinuityState, readableApiError } from "./lite-continuity-state.js?v=114";
+import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=115";
+import { parsePairingHandoff } from "./pairing-handoff.js?v=115";
+import { liteContinuityState, readableApiError, normalizeHomeApiBase } from "./lite-continuity-state.js?v=115";
 import {
   LITE_UPDATE_RESUME_THROTTLE_MS,
   LITE_UPDATE_TIMEOUT_MS,
@@ -10,9 +10,9 @@ import {
   liteBuildMetadataUrl,
   liteServiceWorkerPaths,
   liteUpdateBlockers,
-} from "./lite-update-state.js?v=114";
+} from "./lite-update-state.js?v=115";
 
-const LITE_UI_BUILD = "v114";
+const LITE_UI_BUILD = "v115";
 
 function isCloudHostedLite() {
   return !window.location.pathname.startsWith("/lite");
@@ -23,7 +23,7 @@ function homeDefaultBase() {
 }
 
 function initialHomeBase() {
-  const saved = readConnectionValue("nexusLite.apiBase");
+  const saved = normalizeHomeApiBase(readConnectionValue("nexusLite.apiBase"));
   if (isCloudHostedLite() && saved.replace(/\/$/, "") === window.location.origin) return "";
   return saved || homeDefaultBase();
 }
@@ -250,6 +250,7 @@ const els = {
   standbyConnectionState: document.querySelector("#standby-connection-state"),
   standbyConnectionNext: document.querySelector("#standby-connection-next"),
   apiBaseInput: document.querySelector("#api-base-input"),
+  homeApiUrlCorrection: document.querySelector("#home-api-url-correction"),
   tokenInput: document.querySelector("#token-input"),
   connectButton: document.querySelector("#connect-button"),
   connectionDetails: document.querySelector("#connection-details"),
@@ -607,7 +608,15 @@ function updateRedactionShortcut() {
 }
 
 function normalizeBase(value) {
-  return String(value || "").trim().replace(/\/$/, "");
+  return normalizeHomeApiBase(value);
+}
+
+function showHomeApiUrlCorrection(raw, normalized) {
+  const corrected = normalized && String(raw || "").trim() !== normalized;
+  els.homeApiUrlCorrection.hidden = !corrected;
+  els.homeApiUrlCorrection.textContent = corrected
+    ? "本体接続用のAPI URLに整えました。画面用の末尾 /lite は付けず、入力欄のURLを使います。"
+    : "";
 }
 
 function setConnectionStatus(text, mode = "idle") {
@@ -5350,7 +5359,10 @@ async function connect(options = {}) {
 async function connectHomeOnce({ collapse = true, useInputs = false, readOnly = false } = {}) {
   if (useInputs) {
     resetHomeFeatures();
-    state.apiBase = normalizeBase(els.apiBaseInput.value) || homeDefaultBase();
+    const rawHomeBase = els.apiBaseInput.value;
+    state.apiBase = normalizeBase(rawHomeBase) || homeDefaultBase();
+    els.apiBaseInput.value = state.apiBase;
+    showHomeApiUrlCorrection(rawHomeBase, state.apiBase);
     state.token = els.tokenInput.value.trim();
     writeConnectionValue("nexusLite.apiBase", state.apiBase);
     writeConnectionValue("nexusLite.token", state.token);
@@ -5569,6 +5581,7 @@ async function sendMessage(event) {
 }
 
 els.apiBaseInput.value = state.apiBase;
+showHomeApiUrlCorrection(readConnectionValue("nexusLite.apiBase"), state.apiBase);
 els.tokenInput.value = state.token;
 els.ttsModeSelect.value = state.ttsMode === "split" ? "split" : "trim";
 updateConnectionSummary();

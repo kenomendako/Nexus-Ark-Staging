@@ -1,7 +1,7 @@
 {
   "components": {
     "app": {
-      "version": "0.5.0.83"
+      "version": "0.5.0.84"
     },
     "python_env": {
       "declared_min_python_version": "3.12.16",
@@ -37,7 +37,7 @@
     {
       "kind": "owned",
       "path": "RELEASE_NOTES.md",
-      "sha256": "70a3dd565b4915a2e137bd820472b8999dda97c630c8a607e0ab780629b9b9d8",
+      "sha256": "cdd1f7c01f66891cd4f6ea8f8bb7f681b8e6ecc2984169372141a15df5174dcb",
       "size": 41772
     },
     {
@@ -571,14 +571,14 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/07_external_connections_lite.md",
-      "sha256": "61655f715337e3c76956602e17c7ffc9ded423ad0196bb54c991550c83f65193",
-      "size": 88151
+      "sha256": "36fca697fb0ffb7bf01267d4eb84d60b38e4eb069737cb92468b025344dbff2b",
+      "size": 90377
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
-      "sha256": "8eeffe35d66366bdd6d35b7041660cebb00c32408b26b367f6553081bcc61b1a",
-      "size": 41281
+      "sha256": "1ec75dd8a21cb670c1b8f2181478a70b8f7fb262712463c6438fafcc6aabef8e",
+      "size": 43084
     },
     {
       "kind": "owned",
@@ -637,19 +637,19 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.faiss",
-      "sha256": "a283cee610aeab45865c839ee0f8271fe6dba026faa6f0ac5724ac4f7ae17918",
-      "size": 6733869
+      "sha256": "9b9594a69f30f3164cf805f738f2a01d0293a8dd773250bc1671a250ef682395",
+      "size": 6832173
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.pkl",
-      "sha256": "53ec8411c096ba173391fc6c3b0874f2e4bb98b9202497b8f82aaf1b37bb7887",
-      "size": 353460
+      "sha256": "8ec594c66971062177d8cd74d0b0c77cdd2cb78175b2038582bbf6df56dffd7d",
+      "size": 358846
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/model_info.json",
-      "sha256": "5eab52de2e9670ac3ef319f43d4e5c6e5b4f701fd39d10925f0463fbaca35d06",
+      "sha256": "1a4b5a031a0439b0b3f3f01ab49727666326501a77cbea026991e036cc991da9",
       "size": 175
     },
     {
@@ -1027,8 +1027,8 @@
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/index.html",
-      "sha256": "7a8786dbaf8595fac7b3128841019ee45dde3f3e774429f0bc0d5933e9c2207a",
-      "size": 55387
+      "sha256": "a918c58c88289e5de7b183fc025042d32e94acda07c222e9d9ab75f8584113b7",
+      "size": 55840
     },
     {
       "kind": "owned",
@@ -1039,26 +1039,26 @@
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/service-worker.js",
-      "sha256": "1f3d1501fee5afdae316b6a0d144abede5d73061a727f2c2110e7f76667f187a",
+      "sha256": "566d6a318e3580e17a973671b7191e06688c202ca1adb330f41807dea9f30cd9",
       "size": 6354
     },
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/static/app.js",
-      "sha256": "1ace8ef1fb8662888357cb8892cf279b196d9a79e1c6dd02cd25d9d82f3b74b5",
-      "size": 323636
+      "sha256": "e609f790029c85d418a3092e04edc60cd72a3f0df80e6e80ba39e26fc947d68b",
+      "size": 324328
     },
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/static/lite-build.json",
-      "sha256": "fcdfebfd618ae4b6efc9ee15bc458f6f45d253b7350b6f4fd98704f917df7937",
+      "sha256": "71625461b606767bbb7bab466e8ab16f8cbfa9fb81e60c66eda23714192966de",
       "size": 134
     },
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/static/lite-continuity-state.js",
-      "sha256": "23bfff46cdb18667f05e7d3bfd0c9b76a3476f17f5e85e9289e4278d89fafd74",
-      "size": 2065
+      "sha256": "09eebaf5fb4c2657e64fc6eb4443263f69a3445712431203b6d97eac1c98bfda",
+      "size": 2570
     },
     {
       "kind": "owned",
@@ -1093,8 +1093,8 @@
     {
       "kind": "owned",
       "path": "cloud/lite-relay/scripts/validate-sw-boundary.mjs",
-      "sha256": "5cc24d19d1373bb3828c807e11863654c995b623c4276de087d7a4029a25b1d0",
-      "size": 7402
+      "sha256": "cb1ac6e21af760ec3ce5c68d0355eb5c8de09bf41afdae172e5f7d18600f6b8f",
+      "size": 7424
     },
     {
       "kind": "owned",
@@ -1387,14 +1387,14 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/07_external_connections_lite.md",
-      "sha256": "61655f715337e3c76956602e17c7ffc9ded423ad0196bb54c991550c83f65193",
-      "size": 88151
+      "sha256": "36fca697fb0ffb7bf01267d4eb84d60b38e4eb069737cb92468b025344dbff2b",
+      "size": 90377
     },
     {
       "kind": "owned",
       "path": "docs/user_guide/07a_lite_cloud_setup.md",
-      "sha256": "8eeffe35d66366bdd6d35b7041660cebb00c32408b26b367f6553081bcc61b1a",
-      "size": 41281
+      "sha256": "1ec75dd8a21cb670c1b8f2181478a70b8f7fb262712463c6438fafcc6aabef8e",
+      "size": 43084
     },
     {
       "kind": "owned",
@@ -1747,8 +1747,8 @@
     {
       "kind": "owned",
       "path": "mobile_app/index.html",
-      "sha256": "0458c7bfc07f8d0306a456b40529a95763a776439ddbdb3667126eb742a844e2",
-      "size": 55412
+      "sha256": "892b0bbdf3bb70e2cb62b2f7dc52cef3dfeeafa78ad68d67a5c1fc48db55cd83",
+      "size": 55865
     },
     {
       "kind": "owned",
@@ -1759,26 +1759,26 @@
     {
       "kind": "owned",
       "path": "mobile_app/service-worker.js",
-      "sha256": "ad2b64746e9be5c538bf6a725d035ff3d81f84ea61a65859653d0193786c1cd2",
+      "sha256": "c5569ba2ca7566768e24443f8d00190a512ec087e16d8c88fb821b84b52898ac",
       "size": 6434
     },
     {
       "kind": "owned",
       "path": "mobile_app/static/app.js",
-      "sha256": "be1857d32a44cbdf2c8b3a677a55fb72a7e79b1e1d00530c3496ba965138415f",
-      "size": 323730
+      "sha256": "2f67acf53e24c80d816b6aefad86649a93cbe0b3f70f25d5eae19594cb3228f1",
+      "size": 324422
     },
     {
       "kind": "owned",
       "path": "mobile_app/static/lite-build.json",
-      "sha256": "fcdfebfd618ae4b6efc9ee15bc458f6f45d253b7350b6f4fd98704f917df7937",
+      "sha256": "71625461b606767bbb7bab466e8ab16f8cbfa9fb81e60c66eda23714192966de",
       "size": 134
     },
     {
       "kind": "owned",
       "path": "mobile_app/static/lite-continuity-state.js",
-      "sha256": "23bfff46cdb18667f05e7d3bfd0c9b76a3476f17f5e85e9289e4278d89fafd74",
-      "size": 2065
+      "sha256": "09eebaf5fb4c2657e64fc6eb4443263f69a3445712431203b6d97eac1c98bfda",
+      "size": 2570
     },
     {
       "kind": "owned",
@@ -1813,8 +1813,8 @@
     {
       "kind": "owned",
       "path": "nexus_ark.py",
-      "sha256": "3332c62f96bba10b62a1345ca805bb250a75b433ead5972cfb310cadacc1a9c3",
-      "size": 950883
+      "sha256": "33a5708a28821264d021d17fa5e227a87ffb3b69ab4881dc075c250e7ee89dc3",
+      "size": 954186
     },
     {
       "kind": "owned",
@@ -2161,14 +2161,14 @@
     {
       "kind": "owned",
       "path": "site/guide/07_external_connections_lite.html",
-      "sha256": "8160cef6013b4a7e46b433a9d6ab04783849c1ab73ecb36a8db0bc08ff5e1bdc",
-      "size": 93587
+      "sha256": "05a4755b0e3784f7677eecbcd1b399b17d91ad8a46c84e27a755877222b4be74",
+      "size": 96052
     },
     {
       "kind": "owned",
       "path": "site/guide/07a_lite_cloud_setup.html",
-      "sha256": "f281fbb948d5395123f31e33ce0a37ae6a246d2804ed0376af4b369168d2180a",
-      "size": 46081
+      "sha256": "1aa8db53542639aefde194f5bae8f6a6f13b3a535fcdf174106f2f2a85cf31d9",
+      "size": 47969
     },
     {
       "kind": "owned",
@@ -2593,8 +2593,8 @@
     {
       "kind": "owned",
       "path": "ui_handlers/__init__.py",
-      "sha256": "5aa67f405e9d4a79a237d3c5421d719097eed37700cb7df2538140a356531861",
-      "size": 1161305
+      "sha256": "f1ba8065ad5be203f31f02ed0eb3ab46c151a0e3e01ee503ac06e946bf03b6f9",
+      "size": 1167477
     },
     {
       "kind": "owned",
@@ -2803,7 +2803,7 @@
     {
       "kind": "owned",
       "path": "version.json",
-      "sha256": "98f0ec683468df39c628468313b0ced187b727b6d2dad7ef3cfdd1f707ed65aa",
+      "sha256": "8ccce4356bfd44e5fb86e5b7cd1f51c0f4c7521c0b2391f6e349ea53440e2a2c",
       "size": 246
     },
     {
@@ -2836,7 +2836,7 @@
     "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
     "schema_version": 1
   },
-  "release_version": "0.5.0.83",
+  "release_version": "0.5.0.84",
   "required_entries": [
     "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
     "cloud/lite-relay/README.md",
@@ -2890,5 +2890,5 @@
     "cpu": "x86_64",
     "platform": "windows"
   },
-  "total_bytes": 29492938
+  "total_bytes": 29621836
 }

@@ -1,3 +1,23 @@
+export function normalizeHomeApiBase(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:")
+    || parsed.username || parsed.password || parsed.search || parsed.hash) {
+    return raw;
+  }
+
+  const path = parsed.pathname.replace(/\/+$/, "");
+  if (!path || path === "/lite") return parsed.origin;
+  return `${parsed.origin}${path}`;
+}
+
 export function liteContinuityState(status, mode = "home", returningHome = false) {
   const normalized = ["active", "returning"].includes(String(status)) ? String(status) : "";
   const inUse = normalized === "active";

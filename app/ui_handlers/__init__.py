@@ -18507,8 +18507,48 @@ def _get_lan_ipv4() -> str:
     return ""
 
 
+def _build_lite_connection_urls(
+    port: int,
+    lan_ip: str,
+    tailscale_ip: str,
+    dns_name: str,
+) -> Dict[str, str]:
+    """Liteの画面URLと、本体APIへ渡すbase URLを用途別に分けて作る。
+
+    `/lite` はスマホで画面を開くためのパスであり、PWAの「本体への接続」へ
+    入れるAPI baseには含めない。接続案内とテストが同じ規則を使えるよう、
+    ネットワークへアクセスせずURLだけを組み立てる。
+    """
+    local_base = f"http://127.0.0.1:{port}"
+    lan_base = f"http://{lan_ip}:{port}" if lan_ip else "自動検出できませんでした"
+    tailscale_http_base = (
+        f"http://{tailscale_ip}:{port}" if tailscale_ip else f"http://<Tailscale IP>:{port}"
+    )
+    tailscale_https_base = (
+        f"https://{dns_name}" if dns_name else "https://<PCのTailscale DNS名>.ts.net"
+    )
+    return {
+        "local_base": local_base,
+        "local_screen_url": f"{local_base}/lite",
+        "lan_base": lan_base,
+        "lan_screen_url": f"{lan_base}/lite" if lan_ip else "自動検出できませんでした",
+        "tailscale_http_base": tailscale_http_base,
+        "tailscale_http_screen_url": f"{tailscale_http_base}/lite",
+        "tailscale_https_base": tailscale_https_base,
+        "tailscale_https_screen_url": f"{tailscale_https_base}/lite",
+    }
+
+
+def _escape_lite_connection_markdown(value: Any) -> str:
+    """接続診断の動的値をMarkdown内で安全に表示する。"""
+    text = str(value or "").replace("\r", " ").replace("\n", " ")
+    # URLやTailscale CLI出力をコードスパンへ入れるため、HTMLとbacktickを
+    # 文字として表示する。秘密値を取り込む関数ではなく、表示値専用の境界。
+    return html.escape(text, quote=True).replace("`", "&#96;")
+
+
 def build_api_gateway_lite_connection_help() -> str:
-    """Nexus Ark Liteの接続先とTailscale Serveコマンドを表示するMarkdownを生成する。"""
+    """Nexus Ark Liteの画面URLと本体API URLを分けて表示するMarkdownを生成する。"""
     settings = config_manager.CONFIG_GLOBAL.get("api_gateway_settings", {}) or {}
     port = int(settings.get("port", 8000) or 8000)
     api_enabled = bool(settings.get("enabled"))
@@ -18517,23 +18557,35 @@ def build_api_gateway_lite_connection_help() -> str:
     serve_status = _get_tailscale_serve_status()
     serve_status_json = _get_tailscale_serve_status_json()
     lan_ip = _get_lan_ipv4()
-    local_url = f"http://127.0.0.1:{port}/lite"
-    lan_url = f"http://{lan_ip}:{port}/lite" if lan_ip else "自動検出できませんでした"
-    tailnet_http_url = f"http://{tailscale_ip}:{port}/lite" if tailscale_ip else f"http://<Tailscale IP>:{port}/lite"
-    https_url = f"https://{dns_name}/lite" if dns_name else "https://<PCのTailscale DNS名>.ts.net/lite"
+    urls = _build_lite_connection_urls(port, lan_ip, tailscale_ip, dns_name)
+    local_url = urls["local_screen_url"]
+    lan_url = urls["lan_screen_url"]
+    tailnet_http_url = urls["tailscale_http_screen_url"]
+    https_url = urls["tailscale_https_screen_url"]
     serve_command = f"tailscale serve --bg --https=443 http://127.0.0.1:{port}"
     serve_configured = _tailscale_serve_points_to_port(serve_status, serve_status_json, port)
     serve_diagnostic = _summarize_tailscale_serve_json(serve_status_json, port)
 
     api_state = "有効" if api_enabled else "無効"
-    dns_line = f"- Tailscale DNS名: `{dns_name}`" if dns_name else "- Tailscale DNS名: 未検出（MagicDNS/HTTPS有効化後に再確認）"
-    ip_line = f"- Tailscale IP: `{tailscale_ip}`" if tailscale_ip else "- Tailscale IP: 未検出"
+    dns_line = (
+        f"- Tailscale DNS名: `{_escape_lite_connection_markdown(dns_name)}`"
+        if dns_name
+        else "- Tailscale DNS名: 未検出（MagicDNS/HTTPS有効化後に再確認）"
+    )
+    ip_line = (
+        f"- Tailscale IP: `{_escape_lite_connection_markdown(tailscale_ip)}`"
+        if tailscale_ip
+        else "- Tailscale IP: 未検出"
+    )
     if not shutil.which("tailscale"):
         serve_line = "- Tailscale Serve: 未確認（Tailscale CLIが見つかりません）"
         next_action = "次にやること: Tailscaleをインストールしてログイン後、接続情報を更新してください。"
     elif serve_configured:
         serve_line = f"- Tailscale Serve: **設定済み**（API Gateway port `{port}` へ転送）"
-        next_action = f"次にやること: スマホで `{https_url}` を開いてください。録音も使えます。"
+        next_action = (
+            "次にやること: スマホで "
+            f"`{_escape_lite_connection_markdown(https_url)}` を開いてください。録音も使えます。"
+        )
     elif serve_status or serve_status_json:
         serve_line = "- Tailscale Serve: 未設定または別ポート向けに設定済み"
         next_action = "次にやること: 「Tailscale HTTPS設定を実行」を押すか、下のコマンドをPC側で実行してください。"
@@ -18541,24 +18593,57 @@ def build_api_gateway_lite_connection_help() -> str:
         serve_line = "- Tailscale Serve: 未確認（Tailscale未ログイン、権限待ち、またはHTTPS/MagicDNS未設定の可能性）"
         next_action = "次にやること: Tailscaleのログイン状態とMagicDNS/HTTPS設定を確認し、必要なら「Tailscale HTTPS設定を実行」を押してください。"
 
-    serve_diagnostic_block = f"{serve_diagnostic}\n" if serve_diagnostic else ""
+    serve_diagnostic_block = (
+        f"{_escape_lite_connection_markdown(serve_diagnostic)}\n" if serve_diagnostic else ""
+    )
+
+    local_base = _escape_lite_connection_markdown(urls["local_base"])
+    local_screen_url = _escape_lite_connection_markdown(local_url)
+    lan_base = _escape_lite_connection_markdown(urls["lan_base"])
+    lan_screen_url = _escape_lite_connection_markdown(lan_url)
+    tailscale_http_base = _escape_lite_connection_markdown(urls["tailscale_http_base"])
+    tailscale_http_screen_url = _escape_lite_connection_markdown(tailnet_http_url)
+    tailscale_https_base = _escape_lite_connection_markdown(urls["tailscale_https_base"])
+    tailscale_https_screen_url = _escape_lite_connection_markdown(https_url)
 
     return (
         "#### Nexus Ark Lite 接続情報\n"
         f"- API Gateway: **{api_state}** / Port `{port}`\n"
-        f"- PC内確認: `{local_url}`\n"
-        f"- 同一Wi-Fi: `{lan_url}`\n"
-        f"- Tailscale HTTP（テキスト・画像用）: `{tailnet_http_url}`\n"
-        f"- Tailscale HTTPS（音声入力用）: `{https_url}`\n"
+        "\n"
+        "#### 1. スマホでLiteの画面を開くURL（`/lite` あり）\n"
+        "ブラウザで開く住所です。ホーム画面へ追加する時も、まずこのURLを開きます。\n"
+        f"- Tailscale HTTPS（推奨）: `{tailscale_https_screen_url}`\n"
+        f"- 同一Wi-Fi（HTTP）: `{lan_screen_url}`\n"
+        f"- Tailscale HTTP（テキスト・画像用）: `{tailscale_http_screen_url}`\n"
+        "\n"
+        "#### 2. ホーム画面のLiteで「本体への接続→API URL」に入れるURL（`/lite` なし）\n"
+        "Liteの「設定」→「本体への接続」→「API URL」へ入れる本体APIのベースURLです。"
+        "上の画面URLをそのまま貼らず、同じ接続方法の行から `/lite` を外したURLを入力してください。\n"
+        f"- Tailscale（HTTPS・推奨）: `{tailscale_https_base}`\n"
+        f"- 同一Wi-Fi（HTTP）: `{lan_base}`\n"
+        f"- Tailscale（HTTP）: `{tailscale_http_base}`\n"
+        "\n上のAPI URLをコピーして使えます。画面用の末尾 `/lite` は不要です。Lite側で画面URLを貼り付けた場合も、接続時にAPI URLへ補正します。\n"
+        "\n"
+        "#### PC側の接続状態・診断\n"
+        f"- PC内確認（スマホでは使いません）: `{local_screen_url}`\n"
+        f"- PC内API（スマホでは使いません）: `{local_base}`\n"
         f"{dns_line}\n"
         f"{ip_line}\n"
         f"{serve_line}\n\n"
         f"{serve_diagnostic_block}"
         f"**{next_action}**\n\n"
+        "#### スマホ側での最終確認（ブラウザだけでは完了ではありません）\n"
+        "1. 実際に使うホーム画面のNexus Ark Liteを開き、下部の「設定」→「本体への接続」を開きます。\n"
+        "2. 上のAPI URL（`/lite` なし）と、本体で保存済みの既存の接続用Tokenを入力・確認して「接続」を押します。Tokenはこの案内には表示しません。\n"
+        "3. Lite上部が **🏠 本体接続**、接続メニューが **接続済み** になり、ルーム一覧や会話が表示されることを確認してください。ブラウザで画面を開けただけでは、ホーム画面PWAの本体接続確認とはしません。\n\n"
         "同一Wi-FiのURLをスマホで開けない場合は、PCとスマホが同じWi-Fiか確認し、Windowsの確認画面で"
         "Nexus ArkまたはPythonの**プライベートネットワーク**通信を許可してください。公共ネットワークへは許可しないでください。\n\n"
         "スマホの音声入力はブラウザ制約によりHTTPSが必要です。Tailscale接続では、PC側で一度だけ以下を実行してHTTPS URLを使います。\n\n"
         f"```bash\n{serve_command}\n```\n\n"
+        "#### HTTPS初回承認の手順\n"
+        "初回のTailscale承認が必要な場合や、「Tailscale HTTPS設定を実行」が30秒で終わった場合は、"
+        "PCの**Windowsターミナル**で上の固定コマンドを本人が実行し、表示されたTailscaleの承認を許可してください。"
+        "この案内はコマンドを実行しません。Tailscale Funnelやインターネットへの公開は不要です。\n\n"
         "設定済みか確認する場合:\n\n"
         "```bash\n"
         "tailscale serve status\n"
@@ -18659,6 +18744,7 @@ def build_api_gateway_personal_use_guide() -> str:
         '<ul>'
         '<li>本体と同じ会話・記憶・機能を使います</li>'
         '<li>同じWi-Fi、またはTailscaleで接続します</li>'
+        '<li>実際に使うホーム画面のLiteで「設定」→「本体への接続」を開き、API URLと既存Tokenを入力して接続します</li>'
         '</ul>'
         '</article>'
         '<article class="lite-start-choice-card" data-mode="independent">'
@@ -18666,11 +18752,15 @@ def build_api_gateway_personal_use_guide() -> str:
         '<h4>PCを止めても使う</h4>'
         '<ul>'
         '<li>持ち出したペルソナと必要な記憶で会話します</li>'
-        '<li>帰宅後にLiteでの会話を本体へ戻せます</li>'
+        '<li>独立モード自体には本体接続不要です。PCを止めていても会話できます</li>'
+        '<li>帰宅後にLiteでの会話を本体へ戻せます。スマホから帰宅するときは本体接続が必要で、帰宅はPCのNexus Ark本体からもできます</li>'
         '</ul>'
         '</article>'
         '</div>'
-        '<p class="lite-start-choice-safety">秘密の認証情報はスマホへ渡りません。'
+        '<p class="lite-start-choice-note">ブラウザでLiteの画面を開けても、本体接続の確認は完了ではありません。'
+        'ホーム画面に追加した、実際に使うLiteでAPI URL（画面URLの末尾「/lite」は付けない）と既存Tokenを確認し、'
+        '「接続」を押してください。</p>'
+        '<p class="lite-start-choice-safety">AIサービスのAPIキーやクラウドの所有者用認証情報はスマホへ渡しません。'
         '確認なしに独立モードを開始することもありません。</p>'
         '</section>'
     )
@@ -18932,7 +19022,15 @@ def handle_configure_tailscale_lite_https():
             gr.update(value=build_api_gateway_security_diagnostics()),
             gr.update(value=build_api_gateway_lite_connection_help()),
             gr.update(value=build_api_gateway_lite_qr_html()),
-            gr.update(value="Tailscale Serve設定がタイムアウトしました。Tailscaleの認証/HTTPS有効化画面が待機している可能性があります。"),
+            gr.update(
+                value=(
+                    "Tailscale Serve設定がタイムアウトしました。"
+                    "Tailscaleの認証/HTTPS有効化画面が待機している可能性があります。"
+                    "下の接続情報にある「HTTPS初回承認の手順」を確認し、"
+                    "PCのWindowsターミナルで案内された固定コマンドを実行して本人が承認してください。"
+                    "設定の連打やToken再生成は不要です。"
+                )
+            ),
         )
     except Exception as e:
         return (
