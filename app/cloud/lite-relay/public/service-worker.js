@@ -4,12 +4,12 @@ const NETWORK_TIMEOUT_MS = 2500;
 const ASSETS = [
   "/",
   "/manifest.webmanifest",
-  "/static/styles.css?v=115",
-  "/static/app.js?v=115",
-  "/static/pairing-handoff.js?v=115",
-  "/static/lite-continuity-state.js?v=115",
-  "/static/travel-adapter.js?v=115",
-  "/static/lite-update-state.js?v=115",
+  "/static/styles.css?v=116",
+  "/static/app.js?v=116",
+  "/static/pairing-handoff.js?v=116",
+  "/static/lite-continuity-state.js?v=116",
+  "/static/travel-adapter.js?v=116",
+  "/static/lite-update-state.js?v=116",
   "/icon.png",
   "/icon-maskable.png",
   "/badge.png"

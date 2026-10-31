@@ -1,6 +1,6 @@
-import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=115";
-import { parsePairingHandoff } from "./pairing-handoff.js?v=115";
-import { liteContinuityState, readableApiError, normalizeHomeApiBase } from "./lite-continuity-state.js?v=115";
+import { travelAdapter, withConnectionTimeout, LITE_CONNECTION_TIMEOUT_MS } from "./travel-adapter.js?v=116";
+import { parsePairingHandoff } from "./pairing-handoff.js?v=116";
+import { liteContinuityState, readableApiError, normalizeHomeApiBase } from "./lite-continuity-state.js?v=116";
 import {
   LITE_UPDATE_RESUME_THROTTLE_MS,
   LITE_UPDATE_TIMEOUT_MS,
@@ -10,9 +10,9 @@ import {
   liteBuildMetadataUrl,
   liteServiceWorkerPaths,
   liteUpdateBlockers,
-} from "./lite-update-state.js?v=115";
+} from "./lite-update-state.js?v=116";
 
-const LITE_UI_BUILD = "v115";
+const LITE_UI_BUILD = "v116";
 
 function isCloudHostedLite() {
   return !window.location.pathname.startsWith("/lite");
@@ -1956,6 +1956,7 @@ function setLiteMode(mode) {
   renderChatContextLocation();
   document.body.dataset.liteMode = state.mode;
   els.liteModeLabel.textContent = state.mode === "travel" ? "🧳 独立モード" : "🏠 本体接続";
+  renderHomeProbeState();
   applyTravelSessionControls();
   els.locationSelect.disabled = state.mode === "travel";
   els.imageInput.disabled = state.mode === "travel" || state.sending;
@@ -2966,6 +2967,27 @@ async function copyExternalAiExport() {
   els.externalAiExportStatus.textContent = "コピーしました。外部AIの最初のメッセージ欄へ貼り付けてください。";
 }
 
+function renderHomeProbeState() {
+  if (!state.apiBase) {
+    setConnectivityStep("home", "missing", "warn", "未設定", "Nexus Ark本体のAPI URLを設定してください。");
+  } else if (state.connectivity.home.code === "auth_error") {
+    // 到達性の確認やモード変更だけでは、既知の認証エラーを解除しない。
+  } else if (state.mode === "travel" || state.travelSession || state.currentTravelSession) {
+    // 独立中はhome接続を再開しない。以前の接続成功も認証済みの証拠にはしない。
+    if (state.homeReachable) {
+      setConnectivityStep("home", "reachable", "idle", "本体へ到達可能", "帰宅時に接続と認証を確認します。独立モード中は自動接続しません。");
+    } else {
+      setConnectivityStep("home", "unreachable", "error", "接続不可", "スマホから帰宅する時に、本体の起動、API URL、ネットワークを確認してください。");
+    }
+  } else if (state.homeReachable && state.connected) {
+    setConnectivityStep("home", "connected", "ok", "接続済み", "次にLite用クラウドの状態を確認します。");
+  } else if (state.homeReachable) {
+    setConnectivityStep("home", "reachable", "checking", "再接続を確認中", "保存済み設定で本体へ再接続できます。");
+  } else {
+    setConnectivityStep("home", "unreachable", "error", "接続不可", "本体の起動、API URL、ネットワークを確認してください。");
+  }
+}
+
 async function probeHome() {
   if (!state.apiBase) {
     state.homeReachable = false;
@@ -2984,15 +3006,7 @@ async function probeHome() {
   }
   if (state.apiBase !== base) return false;
   state.homeReachable = reachable;
-  if (state.homeReachable && state.connected) {
-    setConnectivityStep("home", "connected", "ok", "接続済み", "次にLite用クラウドの状態を確認します。");
-  } else if (state.connectivity.home.code === "auth_error") {
-    // healthの到達性だけで、認証エラーを解除しない。
-  } else if (state.homeReachable) {
-    setConnectivityStep("home", "reachable", "checking", "再接続を確認中", "保存済み設定で本体へ再接続できます。");
-  } else {
-    setConnectivityStep("home", "unreachable", "error", "接続不可", "本体の起動、API URL、ネットワークを確認してください。");
-  }
+  renderHomeProbeState();
   return state.homeReachable;
 }
 
@@ -7019,7 +7033,9 @@ els.chatContextDetails.addEventListener("toggle", () => {
 });
 els.connectionCheckButton.addEventListener("click", async () => {
   els.connectionCheckButton.disabled = true;
-  setConnectivityStep("home", "checking", "checking", "確認中", "本体への到達性を確認しています。");
+  if (state.connectivity.home.code !== "auth_error") {
+    setConnectivityStep("home", "checking", "checking", "確認中", "本体への到達性を確認しています。");
+  }
   setConnectivityStep("worker", "checking", "checking", "確認中", "Lite用クラウドへの接続を確認しています。");
   setConnectivityStep("device", "checking", "checking", "確認中", "端末認証を確認しています。");
   setConnectivityStep("standby", "checking", "checking", "確認中", "お出かけ前のデータを確認しています。");

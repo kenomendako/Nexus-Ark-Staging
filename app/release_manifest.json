@@ -1,7 +1,7 @@
 {
   "components": {
     "app": {
-      "version": "0.5.0.84"
+      "version": "0.5.0.85"
     },
     "python_env": {
       "declared_min_python_version": "3.12.16",
@@ -37,7 +37,7 @@
     {
       "kind": "owned",
       "path": "RELEASE_NOTES.md",
-      "sha256": "cdd1f7c01f66891cd4f6ea8f8bb7f681b8e6ecc2984169372141a15df5174dcb",
+      "sha256": "a570a806711426eabdddf5d009dd85ec4831ba5b9ce031f86fb101f44e5a5e68",
       "size": 41772
     },
     {
@@ -535,8 +535,8 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/01_initial_settings.md",
-      "sha256": "b6038c163eb83a2d5cc470ffd6f05cebdb60ca885384421e9a9a55d141956270",
-      "size": 6712
+      "sha256": "dd2034dde243829202cc0d2e13b2ec05b752b3239097fcb7d78d0ccc45a677f1",
+      "size": 6922
     },
     {
       "kind": "owned",
@@ -571,14 +571,14 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/07_external_connections_lite.md",
-      "sha256": "36fca697fb0ffb7bf01267d4eb84d60b38e4eb069737cb92468b025344dbff2b",
-      "size": 90377
+      "sha256": "fb2fb8fd4490d02d371558ec3b895a9c3ecca5e3b4fbaec3295500401cbf2b44",
+      "size": 90658
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
-      "sha256": "1ec75dd8a21cb670c1b8f2181478a70b8f7fb262712463c6438fafcc6aabef8e",
-      "size": 43084
+      "sha256": "75ced25dd861e1972e228cbc0b2b9f54893dc1f0d2c6c5a3773644dd00f62e1a",
+      "size": 46326
     },
     {
       "kind": "owned",
@@ -601,8 +601,8 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/10_outing_import_export.md",
-      "sha256": "8fbd27885d4b8ea81f5d8d6045f12cb4f3d76705ed74f68cfcc54a840b536655",
-      "size": 17223
+      "sha256": "8df1d51a5402da19bd327eda212ea288147edeee7bbdd1bfc339495511c003b5",
+      "size": 17332
     },
     {
       "kind": "owned",
@@ -637,19 +637,19 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.faiss",
-      "sha256": "9b9594a69f30f3164cf805f738f2a01d0293a8dd773250bc1671a250ef682395",
-      "size": 6832173
+      "sha256": "361cd2225e14c3fd6e9dd284adc458cfe194f851a8404b9a16766381c24e5980",
+      "size": 6905901
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.pkl",
-      "sha256": "8ec594c66971062177d8cd74d0b0c77cdd2cb78175b2038582bbf6df56dffd7d",
-      "size": 358846
+      "sha256": "5a6f550e47dac2f5daf3ff147450c3397b885d6e65c6dcccea2dbff3a706d5b6",
+      "size": 363956
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/model_info.json",
-      "sha256": "1a4b5a031a0439b0b3f3f01ab49727666326501a77cbea026991e036cc991da9",
+      "sha256": "b9a955cea7622b3d239520a8a6fdae1040c597ea84c9a5fa7b781080ea40d205",
       "size": 175
     },
     {
@@ -1027,7 +1027,7 @@
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/index.html",
-      "sha256": "a918c58c88289e5de7b183fc025042d32e94acda07c222e9d9ab75f8584113b7",
+      "sha256": "83193013e7a17d9906c166755127526bb8194ada4e95dc2cd881291532292457",
       "size": 55840
     },
     {
@@ -1039,19 +1039,19 @@
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/service-worker.js",
-      "sha256": "566d6a318e3580e17a973671b7191e06688c202ca1adb330f41807dea9f30cd9",
+      "sha256": "6ecf692c39c212ae55c4fd14d946a76943c634162daa21879c06f30c2aadba99",
       "size": 6354
     },
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/static/app.js",
-      "sha256": "e609f790029c85d418a3092e04edc60cd72a3f0df80e6e80ba39e26fc947d68b",
-      "size": 324328
+      "sha256": "e8330403cc7395bddb7ea87c0c78bb037cd87aab6fa708fd4d649ef48f6924f3",
+      "size": 325292
     },
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/static/lite-build.json",
-      "sha256": "71625461b606767bbb7bab466e8ab16f8cbfa9fb81e60c66eda23714192966de",
+      "sha256": "f0a90e94d080951c60ef46979567562b76236694ec80398713c160f52d274258",
       "size": 134
     },
     {
@@ -1075,8 +1075,8 @@
     {
       "kind": "owned",
       "path": "cloud/lite-relay/public/static/styles.css",
-      "sha256": "8a18879a92c830d370f791eb743b57267a959d32b10afa87060fd531e4ccbae3",
-      "size": 60235
+      "sha256": "083341b7024872532947417c2a50a74299af07514a34672e49aac4e1c1ee7f91",
+      "size": 60295
     },
     {
       "kind": "owned",
@@ -1351,8 +1351,8 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/01_initial_settings.md",
-      "sha256": "b6038c163eb83a2d5cc470ffd6f05cebdb60ca885384421e9a9a55d141956270",
-      "size": 6712
+      "sha256": "dd2034dde243829202cc0d2e13b2ec05b752b3239097fcb7d78d0ccc45a677f1",
+      "size": 6922
     },
     {
       "kind": "owned",
@@ -1387,14 +1387,14 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/07_external_connections_lite.md",
-      "sha256": "36fca697fb0ffb7bf01267d4eb84d60b38e4eb069737cb92468b025344dbff2b",
-      "size": 90377
+      "sha256": "fb2fb8fd4490d02d371558ec3b895a9c3ecca5e3b4fbaec3295500401cbf2b44",
+      "size": 90658
     },
     {
       "kind": "owned",
       "path": "docs/user_guide/07a_lite_cloud_setup.md",
-      "sha256": "1ec75dd8a21cb670c1b8f2181478a70b8f7fb262712463c6438fafcc6aabef8e",
-      "size": 43084
+      "sha256": "75ced25dd861e1972e228cbc0b2b9f54893dc1f0d2c6c5a3773644dd00f62e1a",
+      "size": 46326
     },
     {
       "kind": "owned",
@@ -1417,8 +1417,8 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/10_outing_import_export.md",
-      "sha256": "8fbd27885d4b8ea81f5d8d6045f12cb4f3d76705ed74f68cfcc54a840b536655",
-      "size": 17223
+      "sha256": "8df1d51a5402da19bd327eda212ea288147edeee7bbdd1bfc339495511c003b5",
+      "size": 17332
     },
     {
       "kind": "owned",
@@ -1747,7 +1747,7 @@
     {
       "kind": "owned",
       "path": "mobile_app/index.html",
-      "sha256": "892b0bbdf3bb70e2cb62b2f7dc52cef3dfeeafa78ad68d67a5c1fc48db55cd83",
+      "sha256": "fc5dbe16adc4de3d5adc7d802381472bf5992566a3f3432f53a68985480ad0d0",
       "size": 55865
     },
     {
@@ -1759,19 +1759,19 @@
     {
       "kind": "owned",
       "path": "mobile_app/service-worker.js",
-      "sha256": "c5569ba2ca7566768e24443f8d00190a512ec087e16d8c88fb821b84b52898ac",
+      "sha256": "a3a7661af6df41e21d52e25f8b61f4e5decf201f5698f184d08d96d128636b14",
       "size": 6434
     },
     {
       "kind": "owned",
       "path": "mobile_app/static/app.js",
-      "sha256": "2f67acf53e24c80d816b6aefad86649a93cbe0b3f70f25d5eae19594cb3228f1",
-      "size": 324422
+      "sha256": "9d13ec899e016b05b0c962dc0b7954f30edceb522dc5b53ef62f28fbf70b94b5",
+      "size": 325386
     },
     {
       "kind": "owned",
       "path": "mobile_app/static/lite-build.json",
-      "sha256": "71625461b606767bbb7bab466e8ab16f8cbfa9fb81e60c66eda23714192966de",
+      "sha256": "f0a90e94d080951c60ef46979567562b76236694ec80398713c160f52d274258",
       "size": 134
     },
     {
@@ -1795,8 +1795,8 @@
     {
       "kind": "owned",
       "path": "mobile_app/static/styles.css",
-      "sha256": "8a18879a92c830d370f791eb743b57267a959d32b10afa87060fd531e4ccbae3",
-      "size": 60235
+      "sha256": "083341b7024872532947417c2a50a74299af07514a34672e49aac4e1c1ee7f91",
+      "size": 60295
     },
     {
       "kind": "owned",
@@ -1813,8 +1813,8 @@
     {
       "kind": "owned",
       "path": "nexus_ark.py",
-      "sha256": "33a5708a28821264d021d17fa5e227a87ffb3b69ab4881dc075c250e7ee89dc3",
-      "size": 954186
+      "sha256": "ba33d40834bf7dbdefbf829a396b258cc9a3fcbf9ff0ab993f36ecd795b2292c",
+      "size": 954293
     },
     {
       "kind": "owned",
@@ -2125,8 +2125,8 @@
     {
       "kind": "owned",
       "path": "site/guide/01_initial_settings.html",
-      "sha256": "9d76859bb753bfb55cd45a899f7d9fd0fdd8daa1d5a650c0ccf9d0e5a96ceead",
-      "size": 10028
+      "sha256": "4c9425b8d8ea9443b276288c07e0d335444dcf1675f522642c0d61ab9fe00dcc",
+      "size": 10249
     },
     {
       "kind": "owned",
@@ -2161,14 +2161,14 @@
     {
       "kind": "owned",
       "path": "site/guide/07_external_connections_lite.html",
-      "sha256": "05a4755b0e3784f7677eecbcd1b399b17d91ad8a46c84e27a755877222b4be74",
-      "size": 96052
+      "sha256": "f0622e600c434e71fc8ced17206b88fcc991a31efd1f3fca54ca5aed00532b69",
+      "size": 96330
     },
     {
       "kind": "owned",
       "path": "site/guide/07a_lite_cloud_setup.html",
-      "sha256": "1aa8db53542639aefde194f5bae8f6a6f13b3a535fcdf174106f2f2a85cf31d9",
-      "size": 47969
+      "sha256": "75c0b21a534ab022308e55ce9a6d56c53db7bbfea6a5087abc575e81999367a2",
+      "size": 51355
     },
     {
       "kind": "owned",
@@ -2191,8 +2191,8 @@
     {
       "kind": "owned",
       "path": "site/guide/10_outing_import_export.html",
-      "sha256": "9ca3a863469edf1d508a95d74aef7a5f35dbc9f451d80c4d7105785c4a8f35c3",
-      "size": 20545
+      "sha256": "f25779365a45a62ddb7df6f76be061411e2753fef874650a8edc33d461e5fb28",
+      "size": 20654
     },
     {
       "kind": "owned",
@@ -2593,8 +2593,8 @@
     {
       "kind": "owned",
       "path": "ui_handlers/__init__.py",
-      "sha256": "f1ba8065ad5be203f31f02ed0eb3ab46c151a0e3e01ee503ac06e946bf03b6f9",
-      "size": 1167477
+      "sha256": "57471a0c57cbc7714a74d5b91cfe8c59d4a29113713ff46e39e1b33ace14382e",
+      "size": 1167547
     },
     {
       "kind": "owned",
@@ -2803,7 +2803,7 @@
     {
       "kind": "owned",
       "path": "version.json",
-      "sha256": "8ccce4356bfd44e5fb86e5b7cd1f51c0f4c7521c0b2391f6e349ea53440e2a2c",
+      "sha256": "3ef5e3e11608540b44ff15af6bee5b767d1e2f996c7764b6862056f466bad74f",
       "size": 246
     },
     {
@@ -2836,7 +2836,7 @@
     "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
     "schema_version": 1
   },
-  "release_version": "0.5.0.84",
+  "release_version": "0.5.0.85",
   "required_entries": [
     "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
     "cloud/lite-relay/README.md",
@@ -2890,5 +2890,5 @@
     "cpu": "x86_64",
     "platform": "windows"
   },
-  "total_bytes": 29621836
+  "total_bytes": 29714577
 }

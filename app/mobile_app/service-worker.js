@@ -1,15 +1,15 @@
-const CACHE_NAME = "nexus-ark-lite-v115";
+const CACHE_NAME = "nexus-ark-lite-v116";
 const CACHE_NAMESPACE = CACHE_NAME.replace(/\d+$/, "");
 const NETWORK_TIMEOUT_MS = 2500;
 const ASSETS = [
   "/lite/",
   "/lite/manifest.webmanifest",
-  "/lite/static/styles.css?v=115",
-  "/lite/static/app.js?v=115",
-  "/lite/static/pairing-handoff.js?v=115",
-  "/lite/static/lite-continuity-state.js?v=115",
-  "/lite/static/travel-adapter.js?v=115",
-  "/lite/static/lite-update-state.js?v=115",
+  "/lite/static/styles.css?v=116",
+  "/lite/static/app.js?v=116",
+  "/lite/static/pairing-handoff.js?v=116",
+  "/lite/static/lite-continuity-state.js?v=116",
+  "/lite/static/travel-adapter.js?v=116",
+  "/lite/static/lite-update-state.js?v=116",
   "/lite/icon.png",
   "/lite/icon-maskable.png",
   "/lite/badge.png"

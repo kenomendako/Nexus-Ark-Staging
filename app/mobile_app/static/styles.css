@@ -2471,6 +2471,10 @@ body[data-lite-mode="travel"]:not([data-active-page="settings"]) #home-mode-butt
   color: var(--warn-ink);
 }
 
+.browser-pairing-confirmation[hidden] {
+  display: none;
+}
+
 .connection-wizard {
   display: none;
   gap: 0.65rem;
