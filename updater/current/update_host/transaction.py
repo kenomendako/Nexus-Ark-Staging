@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -32,6 +33,40 @@ _SAFE_IDENTIFIER = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$")
 # ACCESS_DENIED(5)だけではACL拒否との識別ができないため、合計1.55秒で打ち切る。
 _JOURNAL_REPLACE_RETRY_DELAYS = (0.05, 0.1, 0.2, 0.4, 0.8)
 _JOURNAL_REPLACE_RETRY_WINERRORS = frozenset({5, 32, 33})
+# 世代renameもjournalのatomic replaceと同じ短い上限付き再試行にする。
+# Windows以外ではwinerrorを合成して再試行しない（OS固有の共有違反契約を
+# POSIXのPermissionErrorへ誤適用しない）。
+_GENERATION_RENAME_RETRY_DELAYS = _JOURNAL_REPLACE_RETRY_DELAYS
+_GENERATION_RENAME_RETRY_WINERRORS = _JOURNAL_REPLACE_RETRY_WINERRORS
+
+_FAILURE_DETAIL_KEYS = frozenset(
+    {"stage", "component", "action", "exception_type", "errno", "winerror"}
+)
+_FAILURE_STAGES = frozenset({"prepare", "switch", "rollback", "journal"})
+_FAILURE_COMPONENTS = frozenset(
+    {"app", "python_env", "runtime", "root_pyproject", "root_uv_lock"}
+)
+_FAILURE_ACTIONS = frozenset(
+    {
+        "validate",
+        "disk_space",
+        "copy_app",
+        "build_python_env",
+        "copy_runtime",
+        "journal_write",
+        "quarantine",
+        "quarantine_journal",
+        "park",
+        "park_journal",
+        "promote",
+        "promote_journal",
+        "restore",
+        "restore_journal",
+        "rollback_journal",
+        "lock",
+        "fault",
+    }
+)
 
 
 class UpdatePhase(StrEnum):
@@ -158,6 +193,117 @@ _JOURNAL_COMPONENTS = (
     "root_pyproject",
     "root_uv_lock",
 )
+
+
+def _safe_exception_type(exc: BaseException) -> str:
+    """Return a bounded exception class name without persisting its message."""
+
+    name = type(exc).__name__
+    return name if _SAFE_IDENTIFIER.fullmatch(name) else "Exception"
+
+
+def _safe_error_number(exc: BaseException, attribute: str) -> int | None:
+    value = getattr(exc, attribute, None)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    # errno/WinError are small OS numbers.  Reject surprising objects or
+    # unbounded values rather than serializing arbitrary exception attributes.
+    if value < 0 or value > 0xFFFF:
+        return None
+    return int(value)
+
+
+def _failure_detail(
+    *,
+    stage: str,
+    component: str | None,
+    action: str,
+    exc: BaseException,
+) -> dict[str, Any]:
+    """Build the fixed, secret-free failure diagnostic stored in the journal."""
+
+    normalized_component = None if component is None else str(component)
+    if stage not in _FAILURE_STAGES:
+        stage = "journal"
+    if normalized_component not in _FAILURE_COMPONENTS:
+        normalized_component = None
+    if action not in _FAILURE_ACTIONS:
+        action = "journal_write"
+    return {
+        "stage": stage,
+        "component": normalized_component,
+        "action": action,
+        "exception_type": _safe_exception_type(exc),
+        "errno": _safe_error_number(exc, "errno"),
+        "winerror": _safe_error_number(exc, "winerror"),
+    }
+
+
+def _validate_failure_detail(value: Any) -> None:
+    """Validate the fixed diagnostic shape while keeping schema v1 compatible."""
+
+    if value is None:
+        return
+    if not isinstance(value, Mapping) or set(value) != _FAILURE_DETAIL_KEYS:
+        raise ValueError("journal failure_detail must contain the fixed diagnostic fields")
+    stage = value.get("stage")
+    component = value.get("component")
+    action = value.get("action")
+    exception_type = value.get("exception_type")
+    if stage not in _FAILURE_STAGES:
+        raise ValueError("journal failure_detail stage is invalid")
+    if component is not None and component not in _FAILURE_COMPONENTS:
+        raise ValueError("journal failure_detail component is invalid")
+    if action not in _FAILURE_ACTIONS:
+        raise ValueError("journal failure_detail action is invalid")
+    if not isinstance(exception_type, str) or not _SAFE_IDENTIFIER.fullmatch(exception_type):
+        raise ValueError("journal failure_detail exception_type is invalid")
+    for key in ("errno", "winerror"):
+        number = value.get(key)
+        if number is not None and (
+            isinstance(number, bool)
+            or not isinstance(number, int)
+            or number < 0
+            or number > 0xFFFF
+        ):
+            raise ValueError(f"journal failure_detail {key} is invalid")
+
+
+def _emit_safe_failure_diagnostic(detail: Mapping[str, Any]) -> None:
+    """Emit only fixed diagnostic fields when the journal itself cannot be saved."""
+
+    try:
+        _validate_failure_detail(detail)
+        payload = {
+            "kind": "nexus_ark_update_failure",
+            "failure_detail": dict(detail),
+        }
+        print(json.dumps(payload, ensure_ascii=True, sort_keys=True), file=sys.stderr, flush=True)
+    except Exception:
+        # A diagnostic must never mask the original update failure.
+        return
+
+
+def _rename_generation(
+    source: Path,
+    destination: Path,
+    rename: Callable[[Path, Path], None],
+) -> None:
+    """Rename a generation with bounded retries for known Windows sharing errors."""
+
+    for attempt in range(len(_GENERATION_RENAME_RETRY_DELAYS) + 1):
+        try:
+            rename(source, destination)
+            return
+        except OSError as exc:
+            winerror = getattr(exc, "winerror", None)
+            if (
+                os.name != "nt"
+                or winerror not in _GENERATION_RENAME_RETRY_WINERRORS
+                or attempt == len(_GENERATION_RENAME_RETRY_DELAYS)
+            ):
+                raise
+            time.sleep(_GENERATION_RENAME_RETRY_DELAYS[attempt])
 
 
 def _validate_presence_baseline(data: Mapping[str, Any]) -> None:
@@ -297,36 +443,51 @@ class JournalStore:
         if not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise ValueError("invalid manifest digest")
         _validate_presence_baseline(data)
+        _validate_failure_detail(data.get("failure_detail"))
         if _contains_forbidden_journal_value(data):
             raise ValueError("journal contains a forbidden key or absolute path")
 
     def write(self, data: Mapping[str, Any]) -> None:
-        self.validate(data)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self.path.with_name(self.path.name + ".tmp")
-        with temp.open("w", encoding="utf-8", newline="\n") as handle:
-            json.dump(data, handle, ensure_ascii=False, sort_keys=True, indent=2)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        for attempt in range(len(_JOURNAL_REPLACE_RETRY_DELAYS) + 1):
-            try:
-                os.replace(temp, self.path)
-                return
-            except OSError as exc:
-                if (
-                    getattr(exc, "winerror", None) not in _JOURNAL_REPLACE_RETRY_WINERRORS
-                    or attempt == len(_JOURNAL_REPLACE_RETRY_DELAYS)
-                ):
-                    # 元journalとfsync済みtmpを残し、既存の失敗・復旧経路へ戻す。
-                    raise
-                time.sleep(_JOURNAL_REPLACE_RETRY_DELAYS[attempt])
+        try:
+            self.validate(data)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temp = self.path.with_name(self.path.name + ".tmp")
+            with temp.open("w", encoding="utf-8", newline="\n") as handle:
+                json.dump(data, handle, ensure_ascii=False, sort_keys=True, indent=2)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            for attempt in range(len(_JOURNAL_REPLACE_RETRY_DELAYS) + 1):
+                try:
+                    os.replace(temp, self.path)
+                    return
+                except OSError as exc:
+                    if (
+                        getattr(exc, "winerror", None) not in _JOURNAL_REPLACE_RETRY_WINERRORS
+                        or attempt == len(_JOURNAL_REPLACE_RETRY_DELAYS)
+                    ):
+                        # 元journalとfsync済みtmpを残し、既存の失敗・復旧経路へ戻す。
+                        raise
+                    time.sleep(_JOURNAL_REPLACE_RETRY_DELAYS[attempt])
+        except Exception as exc:
+            # 既存journalが無い／壊れている場合でも、本文やpathを出さずに
+            # host側で失敗を識別できる固定診断をstderrへ残す。
+            _emit_safe_failure_diagnostic(
+                _failure_detail(
+                    stage="journal",
+                    component=None,
+                    action="journal_write",
+                    exc=exc,
+                )
+            )
+            raise
 
 
 class UpdateLock:
-    def __init__(self, path: Path, operation_id: str):
+    def __init__(self, path: Path, operation_id: str, *, reclaim_stale: bool = True):
         self.path = path
         self.operation_id = operation_id
+        self.reclaim_stale = reclaim_stale
         self._fd: int | None = None
 
     def __enter__(self) -> "UpdateLock":
@@ -341,7 +502,7 @@ class UpdateLock:
                 self._fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 break
             except FileExistsError as exc:
-                if attempt or not self._remove_stale_lock():
+                if attempt or not self.reclaim_stale or not self._remove_stale_lock():
                     raise RuntimeError("another update transaction is active") from exc
         if self._fd is None:
             raise RuntimeError("failed to acquire update transaction lock")
@@ -376,8 +537,50 @@ class UpdateLock:
 
 
 def _pid_is_alive(pid: int) -> bool:
+    if type(pid) is not int or pid <= 0 or pid > 0xFFFFFFFF:
+        return True  # 不正なPIDを終了扱いにしてlockを回収しない。
     if pid == os.getpid():
         return True
+    if os.name == "nt":
+        # os.kill(pid, 0) is not a harmless existence probe on Windows: the
+        # CRT may map it to a termination request.  Ask only for SYNCHRONIZE
+        # and inspect the process wait state instead.
+        try:
+            import ctypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            open_process = kernel32.OpenProcess
+            open_process.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+            open_process.restype = ctypes.c_void_p
+            wait_for_single_object = kernel32.WaitForSingleObject
+            wait_for_single_object.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            wait_for_single_object.restype = ctypes.c_uint32
+            close_handle = kernel32.CloseHandle
+            close_handle.argtypes = [ctypes.c_void_p]
+            close_handle.restype = ctypes.c_int
+
+            synchronize = 0x00100000
+            error_invalid_parameter = 87
+            wait_object_0 = 0x00000000
+            wait_timeout = 0x00000102
+            handle = open_process(synchronize, 0, int(pid))
+            if not handle:
+                # ERROR_INVALID_PARAMETER means the PID is gone.  Access
+                # denied or any unknown error is treated as alive (safe side).
+                return ctypes.get_last_error() != error_invalid_parameter
+            try:
+                state = int(wait_for_single_object(handle, 0))
+                if state == wait_object_0:
+                    return False
+                if state == wait_timeout:
+                    return True
+                return True
+            finally:
+                close_handle(handle)
+        except Exception:
+            # An unavailable/unsupported Windows API must not reclaim a lock
+            # that may still belong to a live process.
+            return True
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -407,6 +610,7 @@ def new_journal(*, target_version: str, manifest_digest: str) -> dict[str, Any]:
         "persistent_copy": {"files": 0, "bytes": 0},
         "failed_components": {},
         "failure": None,
+        "failure_detail": None,
         "updated_at": int(time.time()),
     }
 
@@ -487,17 +691,29 @@ def prepare_transaction(
     reserve_bytes: int = DEFAULT_RESERVE_BYTES,
     journal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    exact = validate_release_tree(
-        staging_app,
-        expected_platform="windows",
-        expected_cpu="x86_64",
-    )
+    try:
+        exact = validate_release_tree(
+            staging_app,
+            expected_platform="windows",
+            expected_cpu="x86_64",
+        )
+    except Exception as exc:
+        _emit_safe_failure_diagnostic(
+            _failure_detail(stage="prepare", component="app", action="validate", exc=exc)
+        )
+        raise
     manifest = exact["manifest"]
     runtime_present = bool(manifest.get("components", {}).get("runtime", {}).get("present"))
-    if runtime_present and staging_runtime is not None:
-        validate_bound_runtime(manifest, staging_runtime)
-    elif not runtime_present and staging_runtime is not None:
-        raise RuntimeError("runtime staging is forbidden when the release manifest has no runtime")
+    try:
+        if runtime_present and staging_runtime is not None:
+            validate_bound_runtime(manifest, staging_runtime)
+        elif not runtime_present and staging_runtime is not None:
+            raise RuntimeError("runtime staging is forbidden when the release manifest has no runtime")
+    except Exception as exc:
+        _emit_safe_failure_diagnostic(
+            _failure_detail(stage="prepare", component="runtime", action="validate", exc=exc)
+        )
+        raise
     if journal is None:
         journal = new_journal(
             target_version=str(manifest["release_version"]),
@@ -506,57 +722,84 @@ def prepare_transaction(
     journal["runtime_present"] = runtime_present
     _ensure_initial_baseline(layout, journal)
     store = JournalStore(layout.journal_path)
-    store.write(journal)
-
-    required_bytes = (
-        _tree_size(staging_app)
-        + (_tree_size(staging_runtime) if staging_runtime is not None else 0)
-        + _tree_size(layout.root / "app")
-        + _tree_size(layout.root / ".venv")
-        + (_tree_size(layout.root / "runtime") if runtime_present else 0)
-        + reserve_bytes
-    )
-    free_bytes = available_bytes
-    if free_bytes is None:
-        free_bytes = shutil.disk_usage(layout.root).free
-    if free_bytes < required_bytes:
-        journal["failure"] = "insufficient_disk_space"
-        journal["updated_at"] = int(time.time())
+    failure_component: str | None = None
+    failure_action = "journal_write"
+    try:
         store.write(journal)
-        raise RuntimeError("insufficient disk space for atomic update")
 
-    app_next = layout.root / "app.next"
-    if app_next.exists():
-        raise RuntimeError("app.next already exists; recovery is required")
-    shutil.copytree(staging_app, app_next, symlinks=False)
-    journal["persistent_copy"] = _copy_persistent_state(layout.root / "app", app_next)
-    validate_release_tree(
-        app_next,
-        expected_platform="windows",
-        expected_cpu="x86_64",
-        allow_persistent_state=True,
-    )
-    shutil.copy2(app_next / "pyproject.toml", layout.root / "pyproject.toml.next")
-    shutil.copy2(app_next / "uv.lock", layout.root / "uv.lock.next")
-    python_env_builder(layout, manifest)
-    if not (layout.root / ".venv.next").is_dir():
-        raise RuntimeError("python_env builder did not create .venv.next")
-    runtime_next = layout.root / "runtime.next"
-    if runtime_present:
-        if staging_runtime is not None:
-            if runtime_next.exists():
-                raise RuntimeError("runtime.next already exists; recovery is required")
-            shutil.copytree(staging_runtime, runtime_next, symlinks=False)
-        if not runtime_next.is_dir():
-            raise RuntimeError("runtime.next is required by the release manifest")
-        validate_bound_runtime(manifest, runtime_next)
-    elif runtime_next.exists():
-        raise RuntimeError("runtime staging is forbidden when the release manifest has no runtime")
-    journal["phase"] = UpdatePhase.PREPARED.value
-    journal["failure"] = None
-    journal["updated_at"] = int(time.time())
-    store.write(journal)
-    return journal
+        failure_action = "disk_space"
+        required_bytes = (
+            _tree_size(staging_app)
+            + (_tree_size(staging_runtime) if staging_runtime is not None else 0)
+            + _tree_size(layout.root / "app")
+            + _tree_size(layout.root / ".venv")
+            + (_tree_size(layout.root / "runtime") if runtime_present else 0)
+            + reserve_bytes
+        )
+        free_bytes = available_bytes
+        if free_bytes is None:
+            free_bytes = shutil.disk_usage(layout.root).free
+        if free_bytes < required_bytes:
+            journal["failure"] = "insufficient_disk_space"
+            raise RuntimeError("insufficient disk space for atomic update")
+
+        app_next = layout.root / "app.next"
+        if app_next.exists():
+            raise RuntimeError("app.next already exists; recovery is required")
+        failure_component = "app"
+        failure_action = "copy_app"
+        shutil.copytree(staging_app, app_next, symlinks=False)
+        journal["persistent_copy"] = _copy_persistent_state(layout.root / "app", app_next)
+        validate_release_tree(
+            app_next,
+            expected_platform="windows",
+            expected_cpu="x86_64",
+            allow_persistent_state=True,
+        )
+        shutil.copy2(app_next / "pyproject.toml", layout.root / "pyproject.toml.next")
+        shutil.copy2(app_next / "uv.lock", layout.root / "uv.lock.next")
+        failure_component = "python_env"
+        failure_action = "build_python_env"
+        python_env_builder(layout, manifest)
+        if not (layout.root / ".venv.next").is_dir():
+            raise RuntimeError("python_env builder did not create .venv.next")
+        runtime_next = layout.root / "runtime.next"
+        failure_component = "runtime"
+        failure_action = "copy_runtime"
+        if runtime_present:
+            if staging_runtime is not None:
+                if runtime_next.exists():
+                    raise RuntimeError("runtime.next already exists; recovery is required")
+                shutil.copytree(staging_runtime, runtime_next, symlinks=False)
+            if not runtime_next.is_dir():
+                raise RuntimeError("runtime.next is required by the release manifest")
+            validate_bound_runtime(manifest, runtime_next)
+        elif runtime_next.exists():
+            raise RuntimeError("runtime staging is forbidden when the release manifest has no runtime")
+        journal["phase"] = UpdatePhase.PREPARED.value
+        journal["failure"] = None
+        journal["failure_detail"] = None
+        journal["updated_at"] = int(time.time())
+        failure_component = None
+        failure_action = "journal_write"
+        store.write(journal)
+        return journal
+    except Exception as exc:
+        detail = _failure_detail(
+            stage="prepare",
+            component=failure_component,
+            action=failure_action,
+            exc=exc,
+        )
+        if not journal.get("failure"):
+            journal["failure"] = _safe_exception_type(exc)
+        journal["failure_detail"] = detail
+        journal["updated_at"] = int(time.time())
+        try:
+            store.write(journal)
+        except Exception:
+            _emit_safe_failure_diagnostic(detail)
+        raise
 
 
 def _quarantine_existing_previous(
@@ -571,7 +814,7 @@ def _quarantine_existing_previous(
     destination = layout.failed_dir / f"{component.name}.previous.{operation_id}"
     if destination.exists():
         raise RuntimeError(f"quarantine destination already exists: {component.name}")
-    rename(component.previous, destination)
+    _rename_generation(component.previous, destination, rename)
     return destination.relative_to(layout.root).as_posix()
 
 
@@ -587,7 +830,7 @@ def _quarantine_trial_current(
     destination = layout.failed_dir / f"{component.name}.trial.{operation_id}"
     if destination.exists():
         raise RuntimeError(f"failed generation already exists: {component.name}")
-    rename(component.current, destination)
+    _rename_generation(component.current, destination, rename)
     return destination.relative_to(layout.root).as_posix()
 
 
@@ -596,11 +839,14 @@ def rollback_transaction(
     journal: dict[str, Any],
     *,
     rename: Callable[[Path, Path], None] = os.replace,
+    original_failure: str | None = None,
+    original_failure_detail: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     store = JournalStore(layout.journal_path)
-    journal["phase"] = UpdatePhase.ROLLING_BACK.value
-    journal["updated_at"] = int(time.time())
-    store.write(journal)
+    preserved_failure = original_failure or journal.get("failure")
+    preserved_detail = original_failure_detail or journal.get("failure_detail")
+    failure_component: str | None = None
+    failure_action = "rollback_journal"
     components = {
         item.name: item
         for item in layout.components(
@@ -609,6 +855,9 @@ def rollback_transaction(
         )
     }
     try:
+        journal["phase"] = UpdatePhase.ROLLING_BACK.value
+        journal["updated_at"] = int(time.time())
+        store.write(journal)
         active_step = journal.get("active_step")
         if isinstance(active_step, Mapping):
             component_name = str(active_step.get("component") or "")
@@ -663,10 +912,14 @@ def rollback_transaction(
             else:
                 raise RuntimeError("journal active step action is invalid")
             journal["active_step"] = None
+            failure_component = component_name
+            failure_action = "rollback_journal"
             store.write(journal)
         for component_name in reversed(journal.get("promoted_components", [])):
             component = components[component_name]
             if component.current.exists():
+                failure_component = component_name
+                failure_action = "quarantine"
                 failed_path = _quarantine_trial_current(
                     layout,
                     component,
@@ -674,14 +927,17 @@ def rollback_transaction(
                     rename,
                 )
                 journal.setdefault("failed_components", {})[component.name] = failed_path
+                failure_action = "rollback_journal"
                 store.write(journal)
         for component_name in reversed(journal.get("parked_components", [])):
             component = components[component_name]
+            failure_component = component_name
             if component_name == "runtime" and not _journal_initial_presence(journal, component_name):
                 # Never resurrect a runtime that was absent at transaction
                 # start. Preserve an unexpected previous artifact as failed
                 # evidence rather than restoring it.
                 if component.previous.exists():
+                    failure_action = "quarantine"
                     failed_path = _quarantine_existing_previous(
                         layout,
                         component,
@@ -689,12 +945,14 @@ def rollback_transaction(
                         rename,
                     )
                     journal.setdefault("failed_components", {})[component.name] = failed_path
+                    failure_action = "rollback_journal"
                     store.write(journal)
                 continue
             if component.previous.exists():
                 if component.current.exists():
                     raise RuntimeError(f"cannot restore over current component: {component.name}")
-                rename(component.previous, component.current)
+                failure_action = "restore"
+                _rename_generation(component.previous, component.current, rename)
         runtime_component = components.get("runtime")
         if (
             runtime_component is not None
@@ -704,6 +962,8 @@ def rollback_transaction(
             # Covers a runtime appearing between prepare and switch (or an
             # otherwise incomplete journal). Keep the artifact for diagnosis,
             # but restore the transaction's original absent baseline.
+            failure_component = "runtime"
+            failure_action = "quarantine"
             failed_path = _quarantine_trial_current(
                 layout,
                 runtime_component,
@@ -711,12 +971,15 @@ def rollback_transaction(
                 rename,
             )
             journal.setdefault("failed_components", {})["runtime"] = failed_path
+            failure_action = "rollback_journal"
             store.write(journal)
         if (
             runtime_component is not None
             and not _journal_initial_presence(journal, "runtime")
             and runtime_component.previous.exists()
         ):
+            failure_component = "runtime"
+            failure_action = "quarantine"
             failed_path = _quarantine_existing_previous(
                 layout,
                 runtime_component,
@@ -724,16 +987,40 @@ def rollback_transaction(
                 rename,
             )
             journal.setdefault("failed_components", {})["runtime"] = failed_path
+            failure_action = "rollback_journal"
             store.write(journal)
+        failure_component = None
+        failure_action = "rollback_journal"
         journal["phase"] = UpdatePhase.ROLLED_BACK.value
         journal["updated_at"] = int(time.time())
         store.write(journal)
         return journal
     except Exception as exc:
         journal["phase"] = UpdatePhase.MANUAL_RECOVERY_REQUIRED.value
-        journal["failure"] = type(exc).__name__
+        if preserved_failure is None:
+            preserved_failure = _safe_exception_type(exc)
+        journal["failure"] = preserved_failure
+        if preserved_detail is None:
+            preserved_detail = _failure_detail(
+                stage="rollback",
+                component=failure_component,
+                action=failure_action,
+                exc=exc,
+            )
+        journal["failure_detail"] = dict(preserved_detail)
         journal["updated_at"] = int(time.time())
-        store.write(journal)
+        _emit_safe_failure_diagnostic(
+            _failure_detail(
+                stage="rollback",
+                component=failure_component,
+                action=failure_action,
+                exc=exc,
+            )
+        )
+        try:
+            store.write(journal)
+        except Exception:
+            _emit_safe_failure_diagnostic(dict(preserved_detail))
         raise
 
 
@@ -753,14 +1040,18 @@ def switch_generations(
     journal["promoted_components"] = []
     journal["quarantined_previous"] = {}
     journal["active_step"] = None
-    store.write(journal)
     components = layout.components(
         runtime_present=bool(journal.get("runtime_present")),
         initial_presence=journal.get("initial_presence"),
     )
+    failure_component: str | None = None
+    failure_action = "journal_write"
     try:
+        store.write(journal)
         with UpdateLock(layout.lock_path, journal["operation_id"]):
             for component in components:
+                failure_component = component.name
+                failure_action = "validate"
                 if component.required and not component.current.exists():
                     raise RuntimeError(f"missing current component: {component.name}")
                 if (
@@ -774,6 +1065,7 @@ def switch_generations(
                 if not component.next.exists():
                     raise RuntimeError(f"missing next component: {component.name}")
                 fault(f"before:{component.name}:quarantine")
+                failure_action = "quarantine"
                 quarantine = _quarantine_existing_previous(
                     layout,
                     component,
@@ -782,35 +1074,68 @@ def switch_generations(
                 )
                 if quarantine:
                     journal["quarantined_previous"][component.name] = quarantine
+                    failure_action = "quarantine_journal"
                     store.write(journal)
+                failure_action = "fault"
                 fault(f"before:{component.name}:park")
                 journal["active_step"] = {"component": component.name, "action": "park"}
+                failure_action = "park_journal"
                 store.write(journal)
                 if component.current.exists():
-                    rename(component.current, component.previous)
+                    failure_action = "park"
+                    _rename_generation(component.current, component.previous, rename)
                     journal["parked_components"].append(component.name)
                 elif component.name != "runtime" or component.required:
                     raise RuntimeError(f"missing current component: {component.name}")
                 # An absent initial runtime has no park rename. Clearing the
                 # active step is still journaled for power-loss recovery.
                 journal["active_step"] = None
+                failure_action = "park_journal"
                 store.write(journal)
+                failure_action = "fault"
                 fault(f"after:{component.name}:park")
                 journal["active_step"] = {"component": component.name, "action": "promote"}
+                failure_action = "promote_journal"
                 store.write(journal)
-                rename(component.next, component.current)
+                failure_action = "promote"
+                _rename_generation(component.next, component.current, rename)
                 journal["promoted_components"].append(component.name)
                 journal["active_step"] = None
+                failure_action = "promote_journal"
                 store.write(journal)
+                failure_action = "fault"
                 fault(f"after:{component.name}:promote")
         journal["phase"] = UpdatePhase.TRIAL_STARTING.value
         journal["updated_at"] = int(time.time())
+        failure_component = None
+        failure_action = "journal_write"
         store.write(journal)
         return journal
     except Exception as exc:
-        journal["failure"] = type(exc).__name__
-        store.write(journal)
-        rollback_transaction(layout, journal, rename=rename)
+        detail = _failure_detail(
+            stage="switch",
+            component=failure_component,
+            action=failure_action,
+            exc=exc,
+        )
+        journal["failure"] = _safe_exception_type(exc)
+        journal["failure_detail"] = detail
+        try:
+            store.write(journal)
+        except Exception:
+            _emit_safe_failure_diagnostic(detail)
+            # The old journal remains the only durable intent.  Do not
+            # continue into rollback while its failure detail is unpersisted;
+            # preserving the switching state is safer than inventing a mixed
+            # recovery record.
+            raise
+        rollback_transaction(
+            layout,
+            journal,
+            rename=rename,
+            original_failure=journal["failure"],
+            original_failure_detail=detail,
+        )
         raise
 
 
@@ -819,6 +1144,7 @@ def commit_transaction(layout: GenerationLayout, journal: dict[str, Any]) -> dic
         raise ValueError("trial must be active before commit")
     journal["phase"] = UpdatePhase.COMMITTED.value
     journal["failure"] = None
+    journal["failure_detail"] = None
     journal["updated_at"] = int(time.time())
     JournalStore(layout.journal_path).write(journal)
     return journal

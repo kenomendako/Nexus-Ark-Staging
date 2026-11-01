@@ -20,6 +20,7 @@ tested on Linux without pretending to be Windows.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import secrets
@@ -27,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, MutableMapping, Sequence
@@ -37,6 +39,8 @@ from .transaction import (
     GenerationLayout,
     JournalStore,
     UpdatePhase,
+    UpdateLock,
+    _pid_is_alive,
     commit_transaction,
     prepare_transaction,
     recover_incomplete_transaction,
@@ -49,6 +53,8 @@ from .trial import validate_trial_marker
 DEFAULT_TRIAL_PORT = 7860
 DEFAULT_TRIAL_TIMEOUT_SECONDS = 300.0
 DEFAULT_ROLLBACK_TIMEOUT_SECONDS = 15.0
+_COMMITTED_STAGING_PREFIX = "committed-staging."
+_COMMITTED_STAGING_ENTRIES = frozenset({"app", "app.download", "runtime"})
 
 
 class SupervisorError(RuntimeError):
@@ -320,33 +326,78 @@ class UpdateSupervisor:
             raise SupervisorError(f"runtime staging検証に失敗しました: {type(exc).__name__}") from exc
         return candidate
 
-    def _cleanup_committed_staging(self) -> None:
-        """commit済み兄弟stagingだけをbest-effortで除去する。"""
+    def _staging_tree_is_safe_to_quarantine(self, staging: Path) -> bool:
+        """隔離前にroot直下の既知entryとリンク境界を確認する。"""
 
-        for candidate in (
-            self.paths.staging / "runtime",
-            self.paths.staging / "app.download",
-            self.paths.staging / "app",
-        ):
-            try:
-                if candidate.is_symlink():
-                    candidate.unlink()
-                elif candidate.is_dir():
-                    shutil.rmtree(candidate)
-                elif candidate.exists():
-                    candidate.unlink()
-            except OSError as exc:
-                print(
-                    f"[Nexus Ark] commit済みstagingを削除できませんでした: {candidate.name} ({type(exc).__name__})",
-                    file=sys.stderr,
-                )
-                # app manifestを最後まで残し、次回のCOMMITTED分岐から
-                # 兄弟staging cleanupを安全に再試行できるようにする。
-                return
         try:
-            self.paths.staging.rmdir()
-        except (FileNotFoundError, OSError):
-            pass
+            if staging.is_symlink() or not staging.is_dir():
+                return False
+            entries = tuple(staging.iterdir())
+            if any(entry.name not in _COMMITTED_STAGING_ENTRIES for entry in entries):
+                return False
+            self._assert_retry_path(staging, recursive=True)
+        except (OSError, SupervisorError):
+            return False
+        return True
+
+    def _remove_committed_staging_quarantine(self, quarantine: Path) -> bool:
+        if not self._staging_tree_is_safe_to_quarantine(quarantine):
+            return False
+        try:
+            shutil.rmtree(quarantine)
+        except OSError as exc:
+            print(
+                f"[Nexus Ark] commit済みstaging隔離先を削除できませんでした: {quarantine.name} ({type(exc).__name__})",
+                file=sys.stderr,
+            )
+            return False
+        return True
+
+    def _cleanup_committed_staging(self, *, expected_digest: str | None = None) -> None:
+        """検証済みcommit stagingを隔離してからbest-effortで除去する。"""
+
+        recovery = self.paths.recovery
+        staging = self.paths.staging
+        if expected_digest is not None:
+            staging_app = self.discover_staging_app()
+            if staging_app is None:
+                return
+            try:
+                _manifest, staging_digest = self._manifest_info(staging_app)
+            except SupervisorError:
+                return
+            if staging_digest != expected_digest:
+                return
+        if not self._staging_tree_is_safe_to_quarantine(staging):
+            return
+        try:
+            # Check the parent before creating it as well; otherwise a
+            # missing recovery directory below a reparse-pointed parent could
+            # escape the installation root during mkdir.
+            self._assert_retry_path(recovery)
+            recovery.mkdir(parents=True, exist_ok=True)
+            self._assert_retry_path(recovery)
+            quarantine = recovery / f"{_COMMITTED_STAGING_PREFIX}{uuid.uuid4().hex}"
+            if os.path.lexists(quarantine):
+                return
+            # Both paths are under the installation root, so os.replace is an
+            # atomic same-volume rename.  No live staging entry is removed
+            # before this succeeds.
+            os.replace(staging, quarantine)
+        except OSError as exc:
+            print(
+                f"[Nexus Ark] commit済みstagingを隔離できませんでした ({type(exc).__name__})",
+                file=sys.stderr,
+            )
+            return
+        except SupervisorError as exc:
+            print(
+                f"[Nexus Ark] commit済みstaging隔離先を安全確認できませんでした ({type(exc).__name__})",
+                file=sys.stderr,
+            )
+            return
+
+        self._remove_committed_staging_quarantine(quarantine)
 
     @staticmethod
     def _manifest_info(app_dir: Path) -> tuple[dict[str, Any], str]:
@@ -359,6 +410,32 @@ class UpdateSupervisor:
         except Exception as exc:
             raise SupervisorError(f"更新manifest検証に失敗しました: {type(exc).__name__}") from exc
         return exact["manifest"], str(exact["manifest_digest"])
+
+    def _validate_committed_current_for_cleanup(self, expected_digest: str) -> None:
+        """commit済みstagingを再試行する前にcurrent世代を再確認する。"""
+
+        try:
+            current_release = validate_release_tree(
+                self.paths.app,
+                expected_platform="windows",
+                expected_cpu="x86_64",
+                allow_persistent_state=True,
+            )
+            if str(current_release["manifest_digest"]) != expected_digest:
+                raise ValueError("current manifest digest mismatch")
+            current_manifest = current_release["manifest"]
+            runtime_binding = current_manifest.get("components", {}).get("runtime", {})
+            if isinstance(runtime_binding, Mapping) and runtime_binding.get("present") is True:
+                validate_bound_runtime(current_manifest, self.paths.root / "runtime")
+            for name in ("pyproject.toml", "uv.lock"):
+                if (self.paths.root / name).read_bytes() != (self.paths.app / name).read_bytes():
+                    raise ValueError("current project generation mismatch")
+            if not self._python_env_exists():
+                raise ValueError("current Python environment is missing")
+        except Exception as exc:
+            raise SupervisorError(
+                f"commit済みcurrentの整合性を確認できません: {type(exc).__name__}"
+            ) from exc
 
     def _load_journal(self) -> dict[str, Any] | None:
         try:
@@ -396,6 +473,167 @@ class UpdateSupervisor:
         switched = switch_generations(self.layout, journal)
         return self._trial_and_commit(switched, app_dir=self.paths.app)
 
+    def _assert_retry_stopped(self, *, own_transaction_lock: bool = False) -> None:
+        """削除やprocess終了を行わず、停止を確認できない再試行を拒否する。"""
+
+        for name in ("transaction.lock", "bridge.lock"):
+            if own_transaction_lock and name == "transaction.lock":
+                continue
+            if (self.paths.recovery / name).exists():
+                raise SupervisorError("更新処理のlockが残っています。削除せず診断してください")
+        if (self.paths.root / "Start.bat.lock").exists() or (self.paths.root / "updater.next").exists():
+            raise SupervisorError("起動設定の準備状態を確認できないため再試行しません")
+        lock = self.paths.app / "nexus_ark.lock"
+        if not lock.exists():
+            return
+        try:
+            if lock.stat().st_size > 65536:
+                raise ValueError("oversized lock")
+            data = json.loads(lock.read_text(encoding="utf-8"))
+            pid = data.get("pid")
+            if type(pid) is not int or pid <= 0:
+                raise ValueError("invalid lock pid")
+        except (OSError, ValueError, AttributeError) as exc:
+            raise SupervisorError("本体の停止を確認できません。lockを残して診断してください") from exc
+        if _pid_is_alive(pid):
+            raise SupervisorError("本体が起動中、または停止を確認できません。通常終了してから再試行してください")
+
+    def _assert_retry_path(self, path: Path, *, recursive: bool = False) -> None:
+        """復旧の退避元・先をリンクやjunction経由で操作しない。"""
+
+        def check(item: Path) -> None:
+            try:
+                info = item.lstat()
+            except FileNotFoundError:
+                return
+            if item.is_symlink() or getattr(info, "st_file_attributes", 0) & 0x400:
+                raise SupervisorError("再試行対象にリンクがあるため停止しました")
+
+        check(path)
+        for parent in path.parents:
+            check(parent)
+        if recursive and path.is_dir():
+            def cannot_inspect(error: OSError) -> None:
+                raise SupervisorError("再試行対象を完全に確認できないため停止しました") from error
+            for directory, dirs, files in os.walk(path, followlinks=False, onerror=cannot_inspect):
+                for name in dirs + files:
+                    check(Path(directory) / name)
+
+    def prepare_explicit_retry(self) -> dict[str, Any]:
+        """停止したrolled_backだけを、証跡を保持して現在データから再準備する。
+
+        通常起動からは呼ばない。配布物側の停止・backup確認付き入口から実行し、
+        成功後は元Start.batがprepared世代を通常のtrial/commit経路へ渡す。
+        """
+
+        self._assert_retry_path(self.paths.root)
+        self._assert_retry_path(self.paths.recovery)
+        self._assert_retry_path(self.layout.journal_path)
+        self._assert_retry_path(self.layout.journal_path.with_name("transaction.json.tmp"))
+        retry_guard = self.paths.recovery / "retry-pending.json"
+        self._assert_retry_path(retry_guard)
+        if os.path.lexists(retry_guard):
+            raise SupervisorError("明示再試行が中断しています。記録を保持して個別に診断してください")
+        self._assert_retry_path(self.paths.app / "nexus_ark.lock")
+        self._assert_retry_stopped()
+        original = self._load_journal()
+        if not original or original.get("phase") != UpdatePhase.ROLLED_BACK.value:
+            raise SupervisorError("旧版への復旧完了を確認できないため再試行しません")
+        if original.get("active_step") is not None:
+            raise SupervisorError("世代切替の未確定操作があるため再試行しません")
+        staging_app = self.discover_staging_app()
+        if staging_app is None:
+            raise SupervisorError("失敗した更新の完全なstagingがありません")
+        manifest, digest = self._manifest_info(staging_app)
+        if digest != original.get("manifest_digest"):
+            raise SupervisorError("失敗時と異なる更新データです。個別の復旧確認が必要です")
+        staging_runtime = self.discover_staging_runtime(staging_app, manifest)
+        slots = self.layout.components(runtime_present=True)
+        for slot in slots:
+            self._assert_retry_path(slot.current, recursive=True)
+            self._assert_retry_path(slot.next, recursive=True)
+        try:
+            current_release = validate_release_tree(
+                self.paths.app, expected_platform="windows", expected_cpu="x86_64",
+                allow_persistent_state=True,
+            )
+            current_manifest = current_release["manifest"]
+            if current_manifest.get("components", {}).get("runtime", {}).get("present"):
+                validate_bound_runtime(current_manifest, self.paths.root / "runtime")
+            for name in ("pyproject.toml", "uv.lock"):
+                if (self.paths.root / name).read_bytes() != (self.paths.app / name).read_bytes():
+                    raise ValueError("current project generation mismatch")
+        except Exception as exc:
+            raise SupervisorError("旧版の整合性を確認できないため再試行しません") from exc
+        if not self._python_env_exists():
+            raise SupervisorError("旧版のPython環境がないため再試行しません")
+        self._assert_retry_path(staging_app, recursive=True)
+        if staging_runtime is not None:
+            self._assert_retry_path(staging_runtime, recursive=True)
+
+        # current/previousは変更しない。中断しても旧rolled_backが残り、
+        # 通常起動はこのtargetを自動再試行しない。次回の明示操作は残りのnextだけ保管できる。
+        archive = self.layout.failed_dir / ("retry." + uuid.uuid4().hex)
+        self._assert_retry_path(archive)
+        with UpdateLock(self.layout.lock_path, original["operation_id"], reclaim_stale=False):
+            if self._load_journal() != original:
+                raise SupervisorError("再試行の確認中に更新状態が変わりました")
+            self._assert_retry_stopped(own_transaction_lock=True)
+            latest_manifest, latest_digest = self._manifest_info(staging_app)
+            if latest_digest != digest:
+                raise SupervisorError("確認中に更新データが変わったため再試行しません")
+            self.discover_staging_runtime(staging_app, latest_manifest)
+            archive.mkdir(parents=True, exist_ok=False)
+            evidence = self.layout.journal_path.read_bytes()
+            with (archive / "transaction.json").open("xb") as stream:
+                stream.write(evidence)
+                stream.flush()
+                os.fsync(stream.fileno())
+            receipt = {
+                "schema": 1, "operation_id": original["operation_id"],
+                "manifest_digest": digest,
+                "journal_sha256": hashlib.sha256(evidence).hexdigest(),
+                "preserved_next": [slot.next.name for slot in slots if slot.next.exists()],
+            }
+            with (archive / "receipt.json").open("x", encoding="utf-8") as stream:
+                json.dump(receipt, stream, ensure_ascii=False, sort_keys=True)
+                stream.flush()
+                os.fsync(stream.fileno())
+            temp = self.layout.journal_path.with_name("transaction.json.tmp")
+            if temp.exists():
+                os.replace(temp, archive / temp.name)
+            for slot in slots:
+                if slot.next.exists():
+                    os.replace(slot.next, archive / slot.next.name)
+
+            self._assert_retry_stopped(own_transaction_lock=True)
+            # journal保存が拒否されてもpreparedを勝手に再開させない独立guard。
+            # 中断時は残し、最後の状態照合が完了した場合だけ所有するguardを外す。
+            with retry_guard.open("x", encoding="ascii") as stream:
+                json.dump({"operation_id": original["operation_id"], "manifest_digest": digest}, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            prepared = prepare_transaction(
+                self.layout, staging_app, staging_runtime=staging_runtime,
+                python_env_builder=self._build_next_python_env,
+            )
+            try:
+                self._assert_retry_stopped(own_transaction_lock=True)
+                if prepared["manifest_digest"] != digest:
+                    raise SupervisorError("準備中に更新データが変わりました。有効化せず停止しました")
+            except SupervisorError:
+                prepared["phase"] = UpdatePhase.PREPARING.value
+                prepared["failure"] = "retry_state_changed"
+                JournalStore(self.layout.journal_path).write(prepared)
+                raise
+            retry_guard.unlink()
+        return {
+            "phase": prepared["phase"], "target_version": prepared["target_version"],
+            "previous_operation_id": original["operation_id"],
+            "operation_id": prepared["operation_id"],
+            "evidence": archive.relative_to(self.paths.root).as_posix(),
+        }
+
     def apply_staged_update(self) -> Any | None:
         """stagingが完全なmanifestを持つ場合だけ更新し、trial processを返す。"""
 
@@ -403,15 +641,24 @@ class UpdateSupervisor:
         if staging_app is None:
             return None
         manifest, digest = self._manifest_info(staging_app)
-        staging_runtime = self.discover_staging_runtime(staging_app, manifest)
         journal = self._load_journal()
-
+        phase = None
+        old_digest = ""
         if journal:
             phase = UpdatePhase(str(journal["phase"]))
             old_digest = str(journal.get("manifest_digest") or "")
             if phase == UpdatePhase.COMMITTED and old_digest == digest:
-                self._cleanup_committed_staging()
+                self._validate_committed_current_for_cleanup(digest)
+                self._cleanup_committed_staging(expected_digest=digest)
                 return None
+
+        # The committed/same-digest cleanup path above deliberately ignores a
+        # partial staging runtime left by an interrupted cleanup.  Every other
+        # phase, including a new update and prepared retry, must keep the
+        # original staging-runtime validation boundary.
+        staging_runtime = self.discover_staging_runtime(staging_app, manifest)
+
+        if journal:
             if phase == UpdatePhase.ROLLED_BACK and old_digest == digest:
                 # A failed package remains for diagnosis and must not be
                 # retried on every ordinary launch.
@@ -603,7 +850,9 @@ class UpdateSupervisor:
                         "新版の起動確認後に更新記録を確定できません。新版の停止を試みました。"
                         "重ねて起動せず、update_recoveryと各世代を保持して復旧案内を確認してください"
                     ) from exc
-                self._cleanup_committed_staging()
+                self._cleanup_committed_staging(
+                    expected_digest=str(journal["manifest_digest"])
+                )
                 return process
             self._sleep(self.poll_interval_seconds)
 
@@ -643,6 +892,16 @@ class UpdateSupervisor:
         """host lifecycleを実行し、最終app processのexit codeを返す。"""
 
         try:
+            if os.path.lexists(self.paths.recovery / "retry-pending.json"):
+                raise UnsafeGenerationError("明示再試行が未確定です。記録を保持し、読み取り診断を実行してください")
+            if self.layout.lock_path.exists():
+                try:
+                    lock = json.loads(self.layout.lock_path.read_text(encoding="ascii"))
+                    pid = lock["pid"]
+                    if type(pid) is not int or pid <= 0 or _pid_is_alive(pid):
+                        raise ValueError("active or unknown update owner")
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    raise UnsafeGenerationError("別の更新処理が使用中、または状態不明です。重ねて起動しません") from exc
             self.recover()
             self.ensure_current_python_env()
             trial_process = self.apply_staged_update()
@@ -692,11 +951,21 @@ def run_supervisor(root: str | os.PathLike[str], **kwargs: Any) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Nexus Ark Windows update host")
     parser.add_argument("--root", default=".", help="Nexus Ark installation root")
+    parser.add_argument("--prepare-retry", action="store_true", help="explicitly preserve a rolled-back attempt and prepare it again; does not launch")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    if args.prepare_retry:
+        try:
+            print(json.dumps(UpdateSupervisor(args.root).prepare_explicit_retry(), ensure_ascii=False))
+            return 0
+        except Exception as exc:
+            # 例外本文・絶対path・個人データを診断JSONへ流さない。
+            print(json.dumps({"state": "retry_stopped", "exception": type(exc).__name__,
+                              "winerror": getattr(exc, "winerror", None)}, ensure_ascii=False))
+            return 1
     return run_supervisor(args.root)
 
 

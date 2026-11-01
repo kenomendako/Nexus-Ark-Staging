@@ -248,7 +248,12 @@ def _stop_owned(process) -> bool:
     return process.poll() is not None
 
 
-def trial(root: Path, exact: Mapping, *, log: Path, timeout=300.0,
+# 初回移行は依存のcold import、サンプル展開、旧データ移行も行う。
+# 通常更新hostの300秒とは分け、旧rootを保持したまま最大10分確認する。
+DEFAULT_INITIAL_TRIAL_TIMEOUT_SECONDS = 600.0
+
+
+def trial(root: Path, exact: Mapping, *, log: Path, timeout=DEFAULT_INITIAL_TRIAL_TIMEOUT_SECONDS,
           process_factory=subprocess.Popen, stop=_stop_owned) -> None:
     app = root / 'app'
     marker = root / 'update_recovery/trial-success.json'

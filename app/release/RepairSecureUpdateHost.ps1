@@ -14,7 +14,8 @@ prints one JSON result and returns a non-zero exit code on any rejection.
 param(
     [string]$TargetRoot = '',
     [string]$SourceHostPath = '',
-    [switch]$InspectOnly
+    [switch]$InspectOnly,
+    [switch]$AllowRolledBackNext
 )
 
 $script:IsDotSourced = ($MyInvocation.InvocationName -eq '.')
@@ -28,12 +29,14 @@ if (-not $script:IsDotSourced) {
 # 89d5c9eb stable host: seven files.  5746fd60 adds windows_processes.py and
 # changes the transaction/supervisor files.  The latter is retained as an
 # approved previous eight-file generation.  The shipped 0.77 host is retained
-# as known_077 while the current source is the next known_new generation.
+# as known_077, the 0.87/0.88 host as known_088, while the current source is
+# the next known_new generation.
 # The source is not an authorization boundary by itself: every complete
 # generation is pinned below and receipts must carry one of these exact maps.
-# Receipts from prior helpers may label known_old8 or known_077 as
+# Receipts from prior helpers may label known_old8, known_077, or known_088 as
 # ``known_new``; they are accepted only when their complete map proves that
-# exact prior generation.
+# exact prior generation.  In particular, a pre-0.89 receipt labelled
+# ``known_new`` may be interpreted as known_088 only with the complete map.
 $script:KnownOldHostSha256 = [ordered]@{
     '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
     'contracts.py' = '4018fe870273e8fa38b5e07b60bbb49d51edd2feaec38f22e087d528f3fa115f'
@@ -63,13 +66,33 @@ $script:Known077HostSha256 = [ordered]@{
     'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
     'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
 }
-$script:KnownNewHostSha256 = [ordered]@{
+$script:Known085HostSha256 = [ordered]@{
     '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
     'contracts.py' = '958c0c669f716b4eeb04083a1ba39eba913d90bfd7baae7b9c9a15bad848af20'
     'runtime.py' = '3f446f01094438b75974a60215e5d670f90175d83bc2f62a0fb9aff45781245b'
     'runtime_archive.py' = '15b6fd5835efebcb4a02210c7f7ebeffd52a86d4776dfeca109c9e068fb7dbcc'
     'supervisor.py' = '91f59ac334a8c4d9955605e147c7519d3020992ebd9bf00c069bbfbe13b07b2e'
     'transaction.py' = '1a06f6ca858b040cd877de5bf8f31ae00a003486dbd9de56ea22dc5fabae7fe7'
+    'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
+    'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
+}
+$script:Known088HostSha256 = [ordered]@{
+    '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
+    'contracts.py' = '958c0c669f716b4eeb04083a1ba39eba913d90bfd7baae7b9c9a15bad848af20'
+    'runtime.py' = '3f446f01094438b75974a60215e5d670f90175d83bc2f62a0fb9aff45781245b'
+    'runtime_archive.py' = '15b6fd5835efebcb4a02210c7f7ebeffd52a86d4776dfeca109c9e068fb7dbcc'
+    'supervisor.py' = '4aaafb02b9edd232e0f834d28a5de60f8bc95e88ba8beaf513ad217abe29afc6'
+    'transaction.py' = '946a100fd0f5b61746f725f194e6c214684db9378e26df6ef406b6d1c35d48d9'
+    'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
+    'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
+}
+$script:KnownNewHostSha256 = [ordered]@{
+    '__init__.py' = 'e58a28a84176ff2ef4909f29709eb0efe75455d59abf1368f64c829caef24ad5'
+    'contracts.py' = '958c0c669f716b4eeb04083a1ba39eba913d90bfd7baae7b9c9a15bad848af20'
+    'runtime.py' = '3f446f01094438b75974a60215e5d670f90175d83bc2f62a0fb9aff45781245b'
+    'runtime_archive.py' = '15b6fd5835efebcb4a02210c7f7ebeffd52a86d4776dfeca109c9e068fb7dbcc'
+    'supervisor.py' = '7bbdc5e33f87aca6c8b76e64393825fe24612e50443c178406944588dff4be30'
+    'transaction.py' = '946a100fd0f5b61746f725f194e6c214684db9378e26df6ef406b6d1c35d48d9'
     'trial.py' = 'a0bc50e42e462bf35dac908477b7863ac4a6031e8dcbb8a054f3bd3d4a80f326'
     'windows_processes.py' = 'd6c43c7327dde06c021800f87d800a86bdf11550c46411ba4c73c7c30f171641'
 }
@@ -86,8 +109,14 @@ function Get-KnownHostGeneration {
         'known_077' {
             return [ordered]@{ state = 'known_077'; rank = 2; map = $script:Known077HostSha256 }
         }
+        'known_085' {
+            return [ordered]@{ state = 'known_085'; rank = 3; map = $script:Known085HostSha256 }
+        }
+        'known_088' {
+            return [ordered]@{ state = 'known_088'; rank = 4; map = $script:Known088HostSha256 }
+        }
         'known_new' {
-            return [ordered]@{ state = 'known_new'; rank = 3; map = $script:KnownNewHostSha256 }
+            return [ordered]@{ state = 'known_new'; rank = 5; map = $script:KnownNewHostSha256 }
         }
         default { throw 'host世代が許可済み一覧にありません。' }
     }
@@ -123,7 +152,7 @@ function Assert-NoReparseAncestors {
     )
     $cursor = Get-NormalizedPath $Path
     while ($true) {
-        $item = Get-Item -LiteralPath $cursor -Force -ErrorAction SilentlyContinue
+        $item = Get-Item -LiteralPath (Get-SecureReceiptIoPath $cursor) -Force -ErrorAction SilentlyContinue
         if ($null -eq $item) {
             if (-not $AllowMissing) { throw ('{0} を確認できません。' -f $Label) }
         }
@@ -174,7 +203,7 @@ function Assert-RegularDirectory {
     )
     $full = Get-NormalizedPath $Path
     Assert-NoReparseAncestors -Path $full -Label $Label -AllowMissing:$AllowMissing
-    $item = Get-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
+    $item = Get-Item -LiteralPath (Get-SecureReceiptIoPath $full) -Force -ErrorAction SilentlyContinue
     if ($null -eq $item) {
         if ($AllowMissing) { return $full }
         throw ('{0} が見つかりません。' -f $Label)
@@ -193,7 +222,7 @@ function Assert-RegularFile {
     )
     $full = Get-NormalizedPath $Path
     Assert-NoReparseAncestors -Path $full -Label $Label -AllowMissing:$AllowMissing
-    $item = Get-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
+    $item = Get-Item -LiteralPath (Get-SecureReceiptIoPath $full) -Force -ErrorAction SilentlyContinue
     if ($null -eq $item) {
         if ($AllowMissing) { return $full }
         throw ('{0} が見つかりません。' -f $Label)
@@ -207,7 +236,7 @@ function Assert-RegularFile {
 function Get-SecureSha256 {
     param([Parameter(Mandatory = $true)][string]$Path)
     $stream = [IO.File]::Open(
-        $Path,
+        (Get-SecureReceiptIoPath $Path),
         [IO.FileMode]::Open,
         [IO.FileAccess]::Read,
         [IO.FileShare]::Read
@@ -390,7 +419,7 @@ function Get-HostState {
     if (-not $item.PSIsContainer -or (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0)) {
         throw 'updater/currentが通常のdirectoryではありません。'
     }
-    foreach ($generation in @('known_old', 'known_old8', 'known_077', 'known_new')) {
+    foreach ($generation in @('known_old', 'known_old8', 'known_077', 'known_085', 'known_088', 'known_new')) {
         $definition = Get-KnownHostGeneration -State $generation
         try {
             $verified = Compare-CurrentInventory -Root $path -Expected $definition.map -ExpectedState $definition.state
@@ -410,7 +439,7 @@ function Assert-ApprovedSourceHost {
     if ($leaf -ine 'current' -or (Split-Path -Leaf $parent) -ine 'updater') {
         throw 'sourceはdistribution/updater/currentでなければなりません。'
     }
-    foreach ($generation in @('known_old', 'known_old8', 'known_077', 'known_new')) {
+    foreach ($generation in @('known_old', 'known_old8', 'known_077', 'known_085', 'known_088', 'known_new')) {
         $definition = Get-KnownHostGeneration -State $generation
         try {
             $verified = Compare-CurrentInventory -Root $source -Expected $definition.map -ExpectedState $definition.state
@@ -555,6 +584,17 @@ function Assert-ReceiptPaths {
     }
 }
 
+function Get-SecureReceiptIoPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    # 呼出元は通常表記のpathでancestor/reparse検査を済ませてから使用する。
+    # File.ReplaceのbackupだけがMAX_PATHを越える場合にも、元receiptと
+    # previousを同じvolumeへ原子的に保管する契約を維持する。
+    $full = [IO.Path]::GetFullPath($Path)
+    if ($full.StartsWith('\\?\', [StringComparison]::Ordinal)) { return $full }
+    if ($full.StartsWith('\\', [StringComparison]::Ordinal)) { return ('\\?\UNC\' + $full.Substring(2)) }
+    return ('\\?\' + $full)
+}
+
 function Invoke-RepairReceipt {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -565,22 +605,23 @@ function Invoke-RepairReceipt {
     $json = $Receipt | ConvertTo-Json -Depth 12 -Compress
     $temporary = Join-Path $parent ('.receipt-{0}.tmp' -f ([guid]::NewGuid().ToString('N')))
     $encoding = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList @($false)
-    [IO.File]::WriteAllText($temporary, $json + "`n", $encoding)
+    $temporaryIo = Get-SecureReceiptIoPath $temporary
+    [IO.File]::WriteAllText($temporaryIo, $json + "`n", $encoding)
     $stream = $null
     try {
-        $stream = [IO.File]::Open($temporary, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        $stream = [IO.File]::Open($temporaryIo, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
         $stream.Flush($true)
     }
     finally { if ($null -ne $stream) { $stream.Dispose() } }
-    if (Test-Path -LiteralPath $Path) {
+    if (Test-Path -LiteralPath (Get-SecureReceiptIoPath $Path)) {
         # Windows PowerShell binds a $null third argument as an empty path on
         # some .NET overloads.  Keep a unique previous receipt as durable
         # evidence and always pass a real same-volume path to File.Replace.
         $previous = Join-Path $parent ('.receipt-{0}.previous.json' -f ([guid]::NewGuid().ToString('N')))
-        [IO.File]::Replace($temporary, $Path, $previous, $true)
+        [IO.File]::Replace($temporaryIo, (Get-SecureReceiptIoPath $Path), (Get-SecureReceiptIoPath $previous), $true)
     }
     else {
-        [IO.File]::Move($temporary, $Path)
+        [IO.File]::Move($temporaryIo, (Get-SecureReceiptIoPath $Path))
     }
 }
 
@@ -712,11 +753,133 @@ function Assert-TargetProcessesStopped {
     }
 }
 
+function Get-RolledBackUpdateJournal {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $recovery = Join-Path $Root 'update_recovery'
+    $journal = Join-Path $recovery 'transaction.json'
+    Assert-RegularDirectory -Path $recovery -Label 'update_recovery' | Out-Null
+    Assert-RegularFile -Path $journal -Label '更新transaction' | Out-Null
+    if ((Get-Item -LiteralPath $journal).Length -gt 65536) {
+        throw '更新transactionが大きすぎるため停止しました。'
+    }
+    try { $state = Get-Content -LiteralPath $journal -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw '更新transactionを安全に確認できません。' }
+    if ($null -eq $state -or [string]$state.schema_version -ne '1') {
+        throw '更新transactionのschemaが安全な復旧形式ではありません。'
+    }
+    if ([string]$state.phase -cne 'rolled_back') {
+        throw '更新transactionがrolled_backではありません。'
+    }
+    $activeStepProperties = @($state.PSObject.Properties | Where-Object { $_.Name -eq 'active_step' })
+    if ($activeStepProperties.Count -gt 0 -and $null -ne $state.active_step) {
+        throw '更新transactionに未確定のactive_stepがあります。'
+    }
+    $digestProperties = @($state.PSObject.Properties | Where-Object { $_.Name -eq 'manifest_digest' })
+    $digest = if ($digestProperties.Count -gt 0) { [string]$state.manifest_digest } else { '' }
+    if ($digest -notmatch '^[0-9a-fA-F]{64}$') {
+        throw '更新transactionのmanifest digestが不正です。'
+    }
+    $versionProperties = @($state.PSObject.Properties | Where-Object { $_.Name -eq 'target_version' })
+    $targetVersion = if ($versionProperties.Count -gt 0) { ([string]$state.target_version).Trim() } else { '' }
+    if ($targetVersion -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$') {
+        throw '更新transactionのtarget versionが不正です。'
+    }
+    foreach ($name in @('retry_pending', 'retry-pending')) {
+        $property = @($state.PSObject.Properties | Where-Object { $_.Name -eq $name })
+        if ($property.Count -gt 0 -and $null -ne $state.$name -and
+            [string]$state.$name -notin @('', '0', 'false', 'False')) {
+            throw '更新transactionに再試行保留状態があります。'
+        }
+    }
+    $retryGuard = Join-Path $recovery 'retry-pending.json'
+    if (Test-Path -LiteralPath $retryGuard) {
+        Assert-NoReparseAncestors -Path $retryGuard -Label 'retry-pending guard' | Out-Null
+        throw '再試行保留guardが残っています。'
+    }
+    return [ordered]@{
+        state = $state
+        target_version = $targetVersion
+        manifest_digest = $digest
+    }
+}
+
+function Assert-NoReparseTree {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    $rootPath = Get-NormalizedPath $Path
+    $pending = New-Object System.Collections.Stack
+    $pending.Push($rootPath)
+    while ($pending.Count -gt 0) {
+        $directory = [string]$pending.Pop()
+        foreach ($item in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop)) {
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw ('{0} にリンクまたは再解析ポイントが含まれます。' -f $Label)
+            }
+            if ($item.PSIsContainer) { $pending.Push((Get-NormalizedPath $item.FullName)) }
+        }
+    }
+}
+
+function Assert-RolledBackNextTree {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)]$Journal
+    )
+    $allowedRootDirectories = @('app.next', '.venv.next', 'runtime.next')
+    $allowedRootFiles = @('pyproject.toml.next', 'uv.lock.next')
+    foreach ($relative in $allowedRootDirectories) {
+        $candidate = Join-Path $Root $relative
+        if (Test-Path -LiteralPath $candidate) {
+            Assert-RegularDirectory -Path $candidate -Label $relative | Out-Null
+            Assert-NoReparseTree -Path $candidate -Label $relative
+        }
+    }
+    foreach ($relative in $allowedRootFiles) {
+        $candidate = Join-Path $Root $relative
+        if (Test-Path -LiteralPath $candidate) {
+            Assert-RegularFile -Path $candidate -Label $relative | Out-Null
+        }
+    }
+    $staging = Join-Path $Root 'update_staging'
+    if (-not (Test-Path -LiteralPath $staging)) { return }
+    Assert-RegularDirectory -Path $staging -Label 'update_staging' | Out-Null
+    $children = @(Get-ChildItem -LiteralPath $staging -Force -ErrorAction Stop)
+    foreach ($child in $children) {
+        if ($child.Name -notin @('app', 'runtime')) {
+            throw 'update_stagingに未知のentryがあります。'
+        }
+        Assert-RegularDirectory -Path $child.FullName -Label ('update_staging/{0}' -f $child.Name) | Out-Null
+        Assert-NoReparseTree -Path $child.FullName -Label ('update_staging/{0}' -f $child.Name)
+    }
+    $stagingApp = Join-Path $staging 'app'
+    if (-not (Test-Path -LiteralPath $stagingApp)) {
+        if ($children.Count -gt 0) { throw 'update_stagingにappがありません。' }
+        return
+    }
+    $manifestPath = Join-Path $stagingApp 'release_manifest.json'
+    Assert-RegularFile -Path $manifestPath -Label 'update_staging/app/release_manifest.json' | Out-Null
+    try { $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    catch { throw 'update_stagingのrelease manifestを確認できません。' }
+    if ($null -eq $manifest -or [string]$manifest.release_version -cne [string]$Journal.target_version) {
+        throw 'update_stagingのrelease versionがtransactionと一致しません。'
+    }
+}
+
 function Assert-NoPendingArtifacts {
     param(
-        [Parameter(Mandatory = $true)][string]$Root
+        [Parameter(Mandatory = $true)][string]$Root,
+        [switch]$AllowRolledBackNext
     )
     Assert-NexusLauncherMaintenance -Root $Root -KnownStartHashes $script:KnownCanonicalStartSha256
+    $rolledBackJournal = $null
+    if ($AllowRolledBackNext) {
+        $rolledBackJournal = Get-RolledBackUpdateJournal -Root $Root
+        Assert-RolledBackNextTree -Root $Root -Journal $rolledBackJournal
+    }
+    $allowedRootNext = @('app.next', '.venv.next', 'runtime.next', 'pyproject.toml.next', 'uv.lock.next')
     foreach ($relative in @(
         'update_recovery\transaction.lock',
         'update_recovery\bridge.lock',
@@ -728,6 +891,16 @@ function Assert-NoPendingArtifacts {
         $candidate = Join-Path $Root $relative
         if (Test-Path -LiteralPath $candidate) {
             Assert-NoReparseAncestors -Path $candidate -Label $relative | Out-Null
+            if ($AllowRolledBackNext -and $allowedRootNext -contains $relative) {
+                if ($relative -in @('app.next', '.venv.next', 'runtime.next')) {
+                    Assert-RegularDirectory -Path $candidate -Label $relative | Out-Null
+                    Assert-NoReparseTree -Path $candidate -Label $relative
+                }
+                else {
+                    Assert-RegularFile -Path $candidate -Label $relative | Out-Null
+                }
+                continue
+            }
             throw '未解決の更新lockまたはnext世代があります。'
         }
     }
@@ -736,7 +909,7 @@ function Assert-NoPendingArtifacts {
     $staging = Join-Path $Root 'update_staging'
     if (Test-Path -LiteralPath $staging) {
         Assert-RegularDirectory -Path $staging -Label 'update_staging' | Out-Null
-        if (@(Get-ChildItem -LiteralPath $staging -Force -ErrorAction Stop).Count -gt 0) {
+        if (@(Get-ChildItem -LiteralPath $staging -Force -ErrorAction Stop).Count -gt 0 -and -not $AllowRolledBackNext) {
             throw '未解決の更新stagingがあります。'
         }
     }
@@ -751,6 +924,9 @@ function Assert-NoPendingArtifacts {
         Assert-RegularDirectory -Path $directory -Label ('pending scan {0}' -f $directoryRelative) | Out-Null
         foreach ($candidate in @(Get-ChildItem -LiteralPath $directory -Force -ErrorAction Stop | Where-Object { $_.Name -match '(?i)\.next$' })) {
             Assert-NoReparseAncestors -Path $candidate.FullName -Label 'pending .next entry' | Out-Null
+            if ($AllowRolledBackNext -and $directoryRelative -eq '.' -and $allowedRootNext -contains $candidate.Name) {
+                continue
+            }
             throw '未解決の.next世代があります。'
         }
     }
@@ -760,6 +936,10 @@ function Assert-NoPendingArtifacts {
         foreach ($candidate in @(Get-ChildItem -LiteralPath $recovery -Force -ErrorAction Stop | Where-Object { $_.Name -match '(?i)\.tmp$' })) {
             Assert-NoReparseAncestors -Path $candidate.FullName -Label 'recovery temporary update entry' | Out-Null
             throw 'update_recoveryに一時更新fileがあります。'
+        }
+        foreach ($candidate in @(Get-ChildItem -LiteralPath $recovery -Force -ErrorAction Stop | Where-Object { $_.Name -match '(?i)\.next$' })) {
+            Assert-NoReparseAncestors -Path $candidate.FullName -Label 'recovery pending .next entry' | Out-Null
+            throw 'update_recoveryに未解決の.next世代があります。'
         }
         $journal = Join-Path $recovery 'transaction.json'
         if (Test-Path -LiteralPath $journal) {
@@ -978,7 +1158,7 @@ function Get-ReceiptGenerationDefinition {
     )
     $stateName = if ($Role -eq 'old') { [string]$Receipt.old_state } else { [string]$Receipt.new_state }
     $files = if ($Role -eq 'old') { $Receipt.old_files } else { $Receipt.new_files }
-    foreach ($candidateName in @('known_old', 'known_old8', 'known_077', 'known_new')) {
+    foreach ($candidateName in @('known_old', 'known_old8', 'known_077', 'known_085', 'known_088', 'known_new')) {
         $candidate = Get-KnownHostGeneration -State $candidateName
         try { Assert-ReceiptFilesExact -Files $files -Expected $candidate.map -Label ('receipt {0}_files' -f $Role) }
         catch { continue }
@@ -987,7 +1167,7 @@ function Get-ReceiptGenerationDefinition {
         # ``known_new``.  The complete map is the compatibility proof; no
         # state-only or partial-map fallback is accepted.
         if ($Role -eq 'new' -and $stateName -eq 'known_new' -and
-            $candidate.state -in @('known_old8', 'known_077')) {
+            $candidate.state -in @('known_old8', 'known_077', 'known_085', 'known_088')) {
             return [ordered]@{ state = $candidate.state; rank = $candidate.rank; map = $candidate.map; legacy_label = $true }
         }
         throw ('receiptの{0}_stateと{0}_filesが一致しません。' -f $Role)
@@ -1112,7 +1292,8 @@ function Invoke-SecureUpdateHostRepair {
     param(
         [Parameter(Mandatory = $true)][string]$TargetRoot,
         [Parameter(Mandatory = $true)][string]$SourceHostPath,
-        [switch]$InspectOnly
+        [switch]$InspectOnly,
+        [switch]$AllowRolledBackNext
     )
     Set-StrictMode -Version 2.0
     $ErrorActionPreference = 'Stop'
@@ -1132,12 +1313,12 @@ function Invoke-SecureUpdateHostRepair {
     }
     $source = Assert-ApprovedSourceHost -SourceHostPath $SourceHostPath
     $sourceDefinition = Get-KnownHostGeneration -State ([string]$source.inventory.state)
-    $assessmentDefinition = if ($assessment.state -in @('known_old', 'known_old8', 'known_077', 'known_new')) {
+    $assessmentDefinition = if ($assessment.state -in @('known_old', 'known_old8', 'known_077', 'known_085', 'known_088', 'known_new')) {
         Get-KnownHostGeneration -State ([string]$assessment.state)
     }
     else { $null }
     if ($InspectOnly) {
-        Assert-NoPendingArtifacts -Root $root
+        Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Assert-SecureRepairLeaseAvailable -Root $root
@@ -1153,7 +1334,7 @@ function Invoke-SecureUpdateHostRepair {
             if ($InspectOnly) {
                 return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $completeReceipt.receipt_relative -BackupRelative $completeReceipt.backup_relative -OldSha256 $completeDefinition.map['supervisor.py'] -NewSha256 $completeDefinition.map['supervisor.py'] -Message '既知のhost世代です。'
             }
-            Assert-NoPendingArtifacts -Root $root
+            Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
             Assert-AppLockClear -Root $root
             Assert-TargetProcessesStopped -Root $root
             Assert-SecureRepairLeaseAvailable -Root $root
@@ -1168,14 +1349,14 @@ function Invoke-SecureUpdateHostRepair {
         if ($InspectOnly) {
             return New-SecureRepairResult -State 'repair_pending' -Changed $false -TargetRoot $root -SourceHostPath $source.path -ReceiptRelative $pending.value.receipt_relative -BackupRelative $pending.value.backup_relative -RecoveryAction ([string]$pending.value.state) -Message '未完了の修復receiptがあります。'
         }
-        Assert-NoPendingArtifacts -Root $root
+        Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         $lock = $null
         $recoveryResult = $null
         try {
             $lock = Open-SecureRepairLock -Root $root
-            Assert-NoPendingArtifacts -Root $root
+            Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
             $recoveryResult = Invoke-RepairRecovery -TargetRoot $root -SourceHostPath $source.path -Pending $pending
         }
         finally {
@@ -1190,11 +1371,11 @@ function Invoke-SecureUpdateHostRepair {
         # next generation is touched.
         if ($sourceDefinition.rank -gt $pendingDefinition.rank -and
             [string]$recoveryResult.state -eq $pendingDefinition.state) {
-            return Invoke-SecureUpdateHostRepair -TargetRoot $root -SourceHostPath $source.path
+            return Invoke-SecureUpdateHostRepair -TargetRoot $root -SourceHostPath $source.path -AllowRolledBackNext:$AllowRolledBackNext
         }
         return $recoveryResult
     }
-    if ($assessment.state -in @('known_old', 'known_old8', 'known_077', 'known_new')) {
+    if ($assessment.state -in @('known_old', 'known_old8', 'known_077', 'known_085', 'known_088', 'known_new')) {
         if ($sourceDefinition.rank -lt $assessmentDefinition.rank) {
             throw 'sourceが現在hostより古い世代です。'
         }
@@ -1203,7 +1384,7 @@ function Invoke-SecureUpdateHostRepair {
             if ($InspectOnly) {
                 return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $sameMap['supervisor.py'] -NewSha256 $sameMap['supervisor.py'] -Message '既知のhost世代です。'
             }
-            Assert-NoPendingArtifacts -Root $root
+            Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
             Assert-AppLockClear -Root $root
             Assert-TargetProcessesStopped -Root $root
             Assert-SecureRepairLeaseAvailable -Root $root
@@ -1214,24 +1395,24 @@ function Invoke-SecureUpdateHostRepair {
         if ($InspectOnly) {
             return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownNewHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。'
         }
-        Assert-NoPendingArtifacts -Root $root
+        Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         Assert-SecureRepairLeaseAvailable -Root $root
         return New-SecureRepairResult -State 'known_new' -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $script:KnownNewHostSha256['supervisor.py'] -NewSha256 $script:KnownNewHostSha256['supervisor.py'] -Message '既知の新版hostです。変更しません。'
     }
-    if ($assessment.state -notin @('known_old', 'known_old8', 'known_077')) { throw '修復対象hostが既知旧版ではありません。' }
+    if ($assessment.state -notin @('known_old', 'known_old8', 'known_077', 'known_085', 'known_088')) { throw '修復対象hostが既知旧版ではありません。' }
     if ($InspectOnly) {
         return New-SecureRepairResult -State ([string]$assessment.state) -Changed $false -TargetRoot $root -SourceHostPath $source.path -OldSha256 $assessmentDefinition.map['supervisor.py'] -NewSha256 $sourceDefinition.map['supervisor.py'] -Message '既知の旧hostです。修復可能です。'
     }
-    Assert-NoPendingArtifacts -Root $root
+    Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
     Assert-AppLockClear -Root $root
     Assert-TargetProcessesStopped -Root $root
     $lock = $null
     $receipt = $null
     try {
         $lock = Open-SecureRepairLock -Root $root
-        Assert-NoPendingArtifacts -Root $root
+        Assert-NoPendingArtifacts -Root $root -AllowRolledBackNext:$AllowRolledBackNext
         Assert-AppLockClear -Root $root
         Assert-TargetProcessesStopped -Root $root
         $operationId = ([guid]::NewGuid().ToString('N'))
@@ -1357,7 +1538,7 @@ if (-not $script:IsDotSourced) {
         if ([string]::IsNullOrWhiteSpace($TargetRoot) -or [string]::IsNullOrWhiteSpace($SourceHostPath)) {
             throw 'TargetRootとSourceHostPathが必要です。'
         }
-        $result = Invoke-SecureUpdateHostRepair -TargetRoot $TargetRoot -SourceHostPath $SourceHostPath -InspectOnly:$InspectOnly
+        $result = Invoke-SecureUpdateHostRepair -TargetRoot $TargetRoot -SourceHostPath $SourceHostPath -InspectOnly:$InspectOnly -AllowRolledBackNext:$AllowRolledBackNext
         $result | ConvertTo-Json -Depth 12 -Compress
         exit 0
     }

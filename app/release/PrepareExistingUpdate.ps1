@@ -377,7 +377,8 @@ function Assert-TargetProcessesStopped {
 function Assert-TargetRoot {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
-        [hashtable]$Source = $null
+        [hashtable]$Source = $null,
+        [switch]$AllowRolledBackNext
     )
 
     $root = Assert-RegularDirectory $Root '選択したNexus Arkのルート'
@@ -409,7 +410,7 @@ function Assert-TargetRoot {
     # Inspect without writing before asking for backup confirmation or repairing
     # uv. Only the dedicated receipt protocol can justify a missing current.
     if ($null -ne $Source) {
-        $hostState = Invoke-SecureHostMaintenance -Source $Source -TargetRoot $root -InspectOnly
+        $hostState = Invoke-SecureHostMaintenance -Source $Source -TargetRoot $root -InspectOnly -AllowRolledBackNext:$AllowRolledBackNext
         if ($hasModernHost -and -not (Test-SafePathOrAbsent $current) -and $hostState.state -ne 'repair_pending') {
             throw '更新hostの中断状態を検証できないため停止します。'
         }
@@ -594,7 +595,8 @@ function Invoke-SecureHostMaintenance {
     param(
         [Parameter(Mandatory = $true)][hashtable]$Source,
         [Parameter(Mandatory = $true)][string]$TargetRoot,
-        [switch]$InspectOnly
+        [switch]$InspectOnly,
+        [switch]$AllowRolledBackNext
     )
     $arguments = @(
         '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
@@ -603,6 +605,7 @@ function Invoke-SecureHostMaintenance {
         '-SourceHostPath', (ConvertTo-WindowsArgument $Source.SourceHost)
     )
     if ($InspectOnly) { $arguments += '-InspectOnly' }
+    if ($AllowRolledBackNext) { $arguments += '-AllowRolledBackNext' }
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = Join-Path $PSHOME 'powershell.exe'
     $psi.Arguments = $arguments -join ' '
@@ -646,7 +649,7 @@ function Invoke-SecureHostMaintenance {
             throw ('更新の準備を安全に完了できないため、Nexus Arkを起動していません。' + "`r`n" + $safeReasons[$kind] + "`r`n確認コード: " + $kind)
         }
         $result = $outputText | ConvertFrom-Json
-        if ([string]$result.state -notin @('legacy', 'known_old', 'known_old8', 'known_077', 'known_new', 'repair_pending')) {
+        if ([string]$result.state -notin @('legacy', 'known_old', 'known_old8', 'known_077', 'known_085', 'known_088', 'known_new', 'repair_pending')) {
             throw '更新host準備の結果を検証できません。'
         }
         if (-not $InspectOnly -and [string]$result.state -notin @('legacy', 'known_new')) {
