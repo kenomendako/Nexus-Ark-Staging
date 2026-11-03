@@ -217,12 +217,25 @@ def commit_swap(
         _persist_with_fault(workspace_path_value, receipt, state="committed", fault=fault)
         return dict(receipt)
     except Exception as exc:
-        _recover_after_commit_failure(root_path, workspace_path_value, receipt)
+        rename_context = {}
+        try:
+            if isinstance(exc, OSError) and step in {"park_old_root", "promote_new_root"}:
+                # 復旧後の手動確認では消える状態を、その場の固定項目だけで
+                # 観測する。診断の失敗や中断でも既存の復旧を必ず実施する。
+                from .diagnostics import capture_rename_context
+
+                rename_context = capture_rename_context(root_path, workspace_path_value)
+        except Exception:
+            pass
+        finally:
+            _recover_after_commit_failure(root_path, workspace_path_value, receipt)
         error = TransactionError(f"atomic swap failed: {exc}")
         # receiptの契約は変えない。元の例外はcauseへ保持し、表示側では
         # 固定の工程名・数値だけを取り出す（例外本文には個人pathが入り得る）。
         error.bootstrap_step = step
         error.bootstrap_recovery_state = receipt["state"]
+        if rename_context:
+            error.bootstrap_rename_context = rename_context
         raise error from exc
 
 

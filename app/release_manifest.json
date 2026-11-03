@@ -1,7 +1,7 @@
 {
   "components": {
     "app": {
-      "version": "0.5.0.93"
+      "version": "0.5.0.94"
     },
     "python_env": {
       "declared_min_python_version": "3.12.16",
@@ -31,14 +31,14 @@
     {
       "kind": "owned",
       "path": "README.md",
-      "sha256": "e833f4597f500abb279270c464222c0da9c6e7b219b115a05670c2df8a6cc93f",
-      "size": 8645
+      "sha256": "8a0811691900f04e9098458087a27f0e437a998129a6b17ce3f737182c83325e",
+      "size": 9427
     },
     {
       "kind": "owned",
       "path": "RELEASE_NOTES.md",
-      "sha256": "542e90f92040ebb32d57ba00e2a2d5bd6b4da457ebece4df128ed096dc4e330f",
-      "size": 43461
+      "sha256": "14197b0501a4a955c6c230b3e31e4c65e0c7ec66e730b303a1fe24a68fb58b4e",
+      "size": 44607
     },
     {
       "kind": "owned",
@@ -529,8 +529,8 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/knowledge/00_getting_started.md",
-      "sha256": "311fd65146776a1a4f1f11dca05d195a07e7489d421c9b51ab9270b903cc3cac",
-      "size": 12615
+      "sha256": "d2f7eba0b4480a44b97aae77aa5f10c528260f32f0ecabac2939fb4c9d7abc09",
+      "size": 14971
     },
     {
       "kind": "owned",
@@ -637,19 +637,19 @@
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.faiss",
-      "sha256": "90d0c013c9f900ed5fa4b904e72f9b25f1d9777bed3bc925fada152f386cc1a3",
-      "size": 7041069
+      "sha256": "ed5bf23d94701bb14057393f5fb7d40db2c2a63231ea7904c55832c5681e8279",
+      "size": 7090221
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/index.pkl",
-      "sha256": "1858f44597f8e2d69c0693200077521cdf4078a2ff21222e00d7a0c17009539c",
-      "size": 371370
+      "sha256": "00144ccc842d5f9aaf1e72cf9ebf964051918a546764a7f66889de27e2dccc2a",
+      "size": 386246
     },
     {
       "kind": "owned",
       "path": "assets/sample_persona/Olivie/rag_data/faiss_index_dynamic/model_info.json",
-      "sha256": "f629bc6cfdf9ba99a09869b6bdfc4f772bb8c6ab1dc156f0c5b353e6fc0d1fcd",
+      "sha256": "7d60866c2f0dde36a72505745e4bef47d863a2dc54e171d9937738b29bb29774",
       "size": 175
     },
     {
@@ -1345,8 +1345,8 @@
     {
       "kind": "owned",
       "path": "docs/user_guide/00_getting_started.md",
-      "sha256": "311fd65146776a1a4f1f11dca05d195a07e7489d421c9b51ab9270b903cc3cac",
-      "size": 12615
+      "sha256": "d2f7eba0b4480a44b97aae77aa5f10c528260f32f0ecabac2939fb4c9d7abc09",
+      "size": 14971
     },
     {
       "kind": "owned",
@@ -1573,8 +1573,8 @@
     {
       "kind": "owned",
       "path": "legacy_bootstrap/__init__.py",
-      "sha256": "4d09c0904970c0044be0cdb8e574d0ed2e8d99fb372356fab3285811059905a7",
-      "size": 448
+      "sha256": "bdae7a4101a7ecbd1751c66ae6e1b4f2d9bb6d808e6ce1180066220789f1e368",
+      "size": 673
     },
     {
       "kind": "owned",
@@ -1584,9 +1584,15 @@
     },
     {
       "kind": "owned",
+      "path": "legacy_bootstrap/data_import.py",
+      "sha256": "218861eaf00a665bf047c51802dfcb98f57a4ac007f4bd6623ac0db0c50ea0b1",
+      "size": 31336
+    },
+    {
+      "kind": "owned",
       "path": "legacy_bootstrap/diagnostics.py",
-      "sha256": "0ddbaeb0ccf8a32e583a1639752741e7bbf2cd6418ba2529d35fa60e0742a2b2",
-      "size": 4511
+      "sha256": "62f9b860de442f422e9349d78b9a9e8bdd85de3235591f7707de3d75a5599bbf",
+      "size": 13494
     },
     {
       "kind": "owned",
@@ -1597,8 +1603,8 @@
     {
       "kind": "owned",
       "path": "legacy_bootstrap/transaction.py",
-      "sha256": "2c695f51d0b24b1f53909d55ff9296974a9e421cad52d9bc8343f87406fadc27",
-      "size": 31295
+      "sha256": "37088f0d412e347aeb0a6e51ad1ab17454f2628741066f75fb807275477a0d03",
+      "size": 31938
     },
     {
       "kind": "owned",
@@ -1819,8 +1825,8 @@
     {
       "kind": "owned",
       "path": "nexus_ark.py",
-      "sha256": "ba33d40834bf7dbdefbf829a396b258cc9a3fcbf9ff0ab993f36ecd795b2292c",
-      "size": 954293
+      "sha256": "ced4f9b8d3a9094498688bbd2f6d251c529bc1f76d9191804d32887e195ae7fb",
+      "size": 940414
     },
     {
       "kind": "owned",
@@ -1920,6 +1926,12 @@
     },
     {
       "kind": "owned",
+      "path": "release/ImportUserData.ps1",
+      "sha256": "9530148c9a79b60a3261565761539c002beeb45bfa430b3b2af2f8d4bfc2467f",
+      "size": 8334
+    },
+    {
+      "kind": "owned",
       "path": "release/InvokeLegacySecureBootstrap.ps1",
       "sha256": "460966e9a24bb1ef8b323239e67432f7c0671abf9499992b3b04946a7fb689ff",
       "size": 33621
@@ -1939,14 +1951,14 @@
     {
       "kind": "owned",
       "path": "release/RefreshSecureLauncher.ps1",
-      "sha256": "ebb30a1a8cba92896e2362d933453843de11ef5627d231e1f9b272ef56916878",
-      "size": 18838
+      "sha256": "d144b1cc71e10842ab1d287c103becbd171304474e0fe1df97e97fbb76748785",
+      "size": 19025
     },
     {
       "kind": "owned",
       "path": "release/RepairSecureUpdateHost.ps1",
-      "sha256": "9b0248d396e547aac54745c80fe61b3479a1231e166978ee80e7582884b8bb9c",
-      "size": 87169
+      "sha256": "3f150aa2f0d5362ca251a5ebe80ff249f699b674802dd20ff6251547bf6c8cc2",
+      "size": 88369
     },
     {
       "kind": "owned",
@@ -1965,6 +1977,12 @@
       "path": "release/check_uv_security.cjs",
       "sha256": "abbe4b95aad668c0282b7f19b6dc0ae06c4e6a2fc6eff7977bc3cc7b100ce170",
       "size": 591
+    },
+    {
+      "kind": "owned",
+      "path": "release/import_user_data.py",
+      "sha256": "d9283ac70031766d4c295749d204bce9618c1527283b46a731458664139726cc",
+      "size": 3970
     },
     {
       "kind": "owned",
@@ -2131,8 +2149,8 @@
     {
       "kind": "owned",
       "path": "site/guide/00_getting_started.html",
-      "sha256": "06ecc44cca0f605169b52f34fae67a0abe33f4c8d6a69965cf69a5f14747a3aa",
-      "size": 16049
+      "sha256": "ab5dbcc2d2c2f6393cdd74ebb01a16756b392b162979b7bacad169035b4de7e4",
+      "size": 18607
     },
     {
       "kind": "owned",
@@ -2761,8 +2779,8 @@
     {
       "kind": "owned",
       "path": "update_host/supervisor.py",
-      "sha256": "7bbdc5e33f87aca6c8b76e64393825fe24612e50443c178406944588dff4be30",
-      "size": 44736
+      "sha256": "d2539b3f81721145326367202424327283feba1296541c79fb01799d71027897",
+      "size": 45747
     },
     {
       "kind": "owned",
@@ -2815,7 +2833,7 @@
     {
       "kind": "owned",
       "path": "version.json",
-      "sha256": "6e1985b4b77ecb4f48a71685bacbb875705452e40afceaf039cd2d67d8d81017",
+      "sha256": "8f7b98c677f234d6b07053bb8d10e0c702add1db08c995a9e555d68dfdb39ab1",
       "size": 246
     },
     {
@@ -2843,12 +2861,12 @@
       "size": 1947
     }
   ],
-  "file_count": 470,
+  "file_count": 473,
   "persistent_path_catalog": {
     "digest": "e7f1b2b5cd9b527c3f84313912ff08578b92f649019fa7cb208a7d1fe6c44ed3",
     "schema_version": 1
   },
-  "release_version": "0.5.0.93",
+  "release_version": "0.5.0.94",
   "required_entries": [
     "assets/sample_persona/Olivie/knowledge/07a_lite_cloud_setup.md",
     "cloud/lite-relay/README.md",
@@ -2866,6 +2884,7 @@
     "docs/user_guide/07a_lite_cloud_setup.md",
     "legacy_bootstrap/__init__.py",
     "legacy_bootstrap/acquire.py",
+    "legacy_bootstrap/data_import.py",
     "legacy_bootstrap/installer.py",
     "legacy_bootstrap/transaction.py",
     "legacy_bootstrap/verification.py",
@@ -2878,6 +2897,7 @@
     "pyproject.toml",
     "release/CheckLegacyBootstrapTarget.ps1",
     "release/EnsureSecurePython.ps1",
+    "release/ImportUserData.ps1",
     "release/InvokeLegacySecureBootstrap.ps1",
     "release/PrepareExistingUpdate.ps1",
     "release/RefreshSecureLauncher.ps1",
@@ -2885,6 +2905,7 @@
     "release/RepairUpdateCertificates.ps1",
     "release/SecureLauncherMaintenance.ps1",
     "release/check_uv_security.cjs",
+    "release/import_user_data.py",
     "release/legacy_bootstrap_policy.json",
     "release/legacy_bootstrap_requirements.txt",
     "release/legacy_secure_update.py",
@@ -2902,5 +2923,5 @@
     "cpu": "x86_64",
     "platform": "windows"
   },
-  "total_bytes": 29939495
+  "total_bytes": 30054731
 }
