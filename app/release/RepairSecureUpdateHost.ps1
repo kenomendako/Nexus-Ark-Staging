@@ -662,8 +662,9 @@ function Copy-SecureTree {
     )
     Assert-RegularDirectory -Path $Source -Label 'copy source' | Out-Null
     Assert-NoReparseAncestors -Path $Destination -Label 'copy destination' -AllowMissing
-    if (Test-Path -LiteralPath $Destination) { throw 'copy destination already exists。' }
-    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    $destinationIo = Get-SecureReceiptIoPath $Destination
+    if ([IO.Directory]::Exists($destinationIo) -or [IO.File]::Exists($destinationIo)) { throw 'copy destination already exists。' }
+    [IO.Directory]::CreateDirectory($destinationIo) | Out-Null
     $stack = New-Object System.Collections.Stack
     $stack.Push([ordered]@{ source = (Get-NormalizedPath $Source); destination = (Get-NormalizedPath $Destination) })
     while ($stack.Count -gt 0) {
@@ -681,11 +682,13 @@ function Copy-SecureTree {
             }
             $destinationItem = Join-Path $pair.destination $item.Name
             if ($item.PSIsContainer) {
-                New-Item -ItemType Directory -Path $destinationItem -Force | Out-Null
+                [IO.Directory]::CreateDirectory((Get-SecureReceiptIoPath $destinationItem)) | Out-Null
                 $stack.Push([ordered]@{ source = $item.FullName; destination = $destinationItem })
             }
             else {
-                [IO.File]::Copy($item.FullName, $destinationItem, $false)
+                # ancestor/reparse検査は上で通常表記のpathへ実施済み。
+                # 保全先だけMAX_PATHを越える場合も、除外せず全件コピーする。
+                [IO.File]::Copy((Get-SecureReceiptIoPath $item.FullName), (Get-SecureReceiptIoPath $destinationItem), $false)
                 if ((Get-SecureSha256 -Path $destinationItem) -ne (Get-SecureSha256 -Path $item.FullName)) {
                     throw 'copy後のhost file SHA256検証に失敗しました。'
                 }
